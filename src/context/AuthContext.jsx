@@ -26,19 +26,20 @@ export function AuthProvider({ children }) {
       setProfile(null)
       return
     }
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => setProfile(data))
+    refreshProfile(session.user.id)
   }, [session?.user?.id])
+
+  async function refreshProfile(userId) {
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+    setProfile(data)
+  }
 
   const value = {
     session,
     user: session?.user ?? null,
     profile,
     loading,
+    refreshProfile: () => session?.user && refreshProfile(session.user.id),
 
     async signUpWithEmail(email, password, username) {
       const { error } = await supabase.auth.signUp({
@@ -57,6 +58,14 @@ export function AuthProvider({ children }) {
     async signInWithGoogle() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
+        options: { redirectTo: window.location.origin },
+      })
+      if (error) throw error
+    },
+
+    async signInWithSpotify() {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'spotify',
         options: { redirectTo: window.location.origin },
       })
       if (error) throw error

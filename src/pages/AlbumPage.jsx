@@ -14,6 +14,7 @@ import {
   removeRating,
   getReviewsForTrack,
   upsertReview,
+  getListenersAlsoLiked,
 } from '../lib/db'
 import { useAuth } from '../context/AuthContext'
 import TrackRow from '../components/cards/TrackRow'
@@ -22,6 +23,7 @@ import ReviewForm from '../components/reviews/ReviewForm'
 import ReviewList from '../components/reviews/ReviewList'
 import AddToListButton from '../components/lists/AddToListButton'
 import WishlistButton from '../components/lists/WishlistButton'
+import AlbumCard from '../components/cards/AlbumCard'
 
 export default function AlbumPage() {
   const { spotifyId } = useParams()
@@ -36,6 +38,7 @@ export default function AlbumPage() {
   const [reviewCounts, setReviewCounts] = useState({})
   const [openReviewsFor, setOpenReviewsFor] = useState(null)
   const [reviewsByTrack, setReviewsByTrack] = useState({})
+  const [relatedAlbums, setRelatedAlbums] = useState([])
   const [error, setError] = useState('')
 
   const reloadAggregates = useCallback(
@@ -71,6 +74,7 @@ export default function AlbumPage() {
           const data = { artist: cachedAlbum.artists, album: cachedAlbum, tracks }
           setAlbumData(data)
           await reloadAggregates(tracks.map((t) => t.id), cachedAlbum.id)
+          getListenersAlsoLiked(cachedAlbum.id).then(setRelatedAlbums)
         }
 
         // 2) Se não tinha nada em cache, ou o cache está velho (>7 dias),
@@ -81,6 +85,7 @@ export default function AlbumPage() {
           if (!cancelled) {
             setAlbumData(fresh)
             await reloadAggregates(fresh.tracks.map((t) => t.id), fresh.album.id)
+            getListenersAlsoLiked(fresh.album.id).then(setRelatedAlbums)
           }
         }
       } catch (err) {
@@ -224,6 +229,23 @@ export default function AlbumPage() {
           </div>
         </div>
       </div>
+
+      {relatedAlbums.length > 0 && (
+        <section style={{ marginTop: 40 }}>
+          <p className="section-title">Quem ouviu isso também ouviu</p>
+          <div className="grid">
+            {relatedAlbums.map((al) => (
+              <AlbumCard
+                key={al.id}
+                spotifyId={al.spotify_id}
+                coverUrl={al.cover_url}
+                name={al.name}
+                artistName={al.artists?.name}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

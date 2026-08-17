@@ -8,6 +8,15 @@ export default function ListCard({ list }) {
       {list.description && (
         <p style={{ color: 'var(--text-dim)', fontSize: 13.5, marginTop: 4 }}>{list.description}</p>
       )}
+      {list.tags?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+          {list.tags.map((t) => (
+            <span key={t} className="tag-chip">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
       <p className="mono" style={{ color: 'var(--text-faint)', fontSize: 12.5, marginTop: 10 }}>
         {count} item(ns) {!list.is_public && '· privada'}
       </p>

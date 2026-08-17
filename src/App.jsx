@@ -10,6 +10,8 @@ import ProfilePage from './pages/ProfilePage'
 import ListsPage from './pages/ListsPage'
 import ListDetailPage from './pages/ListDetailPage'
 import WishlistPage from './pages/WishlistPage'
+import PeoplePage from './pages/PeoplePage'
+import EditProfilePage from './pages/EditProfilePage'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 
@@ -21,6 +23,14 @@ export default function App() {
         <Route path="/buscar" element={<Search />} />
         <Route path="/artista/:spotifyId" element={<ArtistPage />} />
         <Route path="/album/:spotifyId" element={<AlbumPage />} />
+        <Route
+          path="/perfil/editar"
+          element={
+            <ProtectedRoute>
+              <EditProfilePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/perfil/:username" element={<ProfilePage />} />
         <Route path="/lista/:listId" element={<ListDetailPage />} />
         <Route
@@ -36,6 +46,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <WishlistPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pessoas"
+          element={
+            <ProtectedRoute>
+              <PeoplePage />
             </ProtectedRoute>
           }
         />

@@ -112,6 +112,29 @@ create table public.reviews (
 create index on public.reviews (track_id);
 
 -- ---------------------------------------------------------
+-- CURTIDAS EM REVIEWS
+-- ---------------------------------------------------------
+create table public.review_likes (
+  review_id uuid not null references public.reviews(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (review_id, user_id)
+);
+
+-- ---------------------------------------------------------
+-- COMENTÁRIOS EM REVIEWS
+-- ---------------------------------------------------------
+create table public.review_comments (
+  id uuid primary key default uuid_generate_v4(),
+  review_id uuid not null references public.reviews(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 1000),
+  created_at timestamptz not null default now()
+);
+
+create index on public.review_comments (review_id);
+
+-- ---------------------------------------------------------
 -- SEGUIDORES
 -- ---------------------------------------------------------
 create table public.follows (
@@ -123,6 +146,71 @@ create table public.follows (
 );
 
 -- ---------------------------------------------------------
+-- NOTIFICAÇÕES — geradas automaticamente por triggers (o cliente nunca
+-- insere aqui diretamente, só lê as suas e marca como lidas).
+-- ---------------------------------------------------------
+create table public.notifications (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.profiles(id) on delete cascade,   -- quem recebe
+  actor_id uuid references public.profiles(id) on delete cascade,          -- quem causou
+  type text not null check (type in ('follow', 'review_like', 'review_comment')),
+  review_id uuid references public.reviews(id) on delete cascade,
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index on public.notifications (user_id, created_at desc);
+
+create or replace function public.notify_new_follow()
+returns trigger as $$
+begin
+  insert into public.notifications (user_id, actor_id, type)
+  values (new.following_id, new.follower_id, 'follow');
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger on_follow_created
+  after insert on public.follows
+  for each row execute procedure public.notify_new_follow();
+
+create or replace function public.notify_review_like()
+returns trigger as $$
+declare
+  review_owner uuid;
+begin
+  select user_id into review_owner from public.reviews where id = new.review_id;
+  if review_owner is not null and review_owner <> new.user_id then
+    insert into public.notifications (user_id, actor_id, type, review_id)
+    values (review_owner, new.user_id, 'review_like', new.review_id);
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger on_review_like_created
+  after insert on public.review_likes
+  for each row execute procedure public.notify_review_like();
+
+create or replace function public.notify_review_comment()
+returns trigger as $$
+declare
+  review_owner uuid;
+begin
+  select user_id into review_owner from public.reviews where id = new.review_id;
+  if review_owner is not null and review_owner <> new.user_id then
+    insert into public.notifications (user_id, actor_id, type, review_id)
+    values (review_owner, new.user_id, 'review_comment', new.review_id);
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger on_review_comment_created
+  after insert on public.review_comments
+  for each row execute procedure public.notify_review_comment();
+
+-- ---------------------------------------------------------
 -- LISTAS (do tipo "minhas 10 favoritas de 2024")
 -- ---------------------------------------------------------
 create table public.lists (
@@ -130,9 +218,17 @@ create table public.lists (
   user_id uuid not null references public.profiles(id) on delete cascade,
   title text not null,
   description text,
+  tags text[] not null default '{}',
   is_public boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table public.list_collaborators (
+  list_id uuid not null references public.lists(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (list_id, user_id)
 );
 
 create table public.list_items (
@@ -147,6 +243,36 @@ create table public.list_items (
 );
 
 create index on public.list_items (list_id);
+
+-- Impede duplicar o mesmo item na mesma lista: a mesma faixa não pode
+-- aparecer duas vezes na lista, nem o mesmo álbum duas vezes — mas
+-- várias faixas diferentes do mesmo álbum continuam permitidas.
+create unique index list_items_unique_track
+  on public.list_items (list_id, track_id) where item_type = 'track';
+create unique index list_items_unique_album
+  on public.list_items (list_id, album_id) where item_type = 'album';
+create unique index list_items_unique_artist
+  on public.list_items (list_id, artist_id) where item_type = 'artist';
+
+-- ---------------------------------------------------------
+-- LISTA DE DESEJOS ("ouvir depois") — separada das listas nomeadas,
+-- é um único bucket pessoal por usuário para salvar faixas/álbuns.
+-- ---------------------------------------------------------
+create table public.wishlist_items (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  item_type text not null check (item_type in ('track', 'album')),
+  track_id uuid references public.tracks(id) on delete cascade,
+  album_id uuid references public.albums(id) on delete cascade,
+  added_at timestamptz not null default now()
+);
+
+create unique index wishlist_items_unique_track
+  on public.wishlist_items (user_id, track_id) where item_type = 'track';
+create unique index wishlist_items_unique_album
+  on public.wishlist_items (user_id, album_id) where item_type = 'album';
+
+create index on public.wishlist_items (user_id);
 
 -- ---------------------------------------------------------
 -- VIEWS de agregação (média por faixa, média/distribuição por álbum)
@@ -190,6 +316,12 @@ from public.ratings
 where created_at > now() - interval '7 days'
 group by track_id;
 
+-- Quantidade de notas por usuário — usada para sugerir pessoas pra seguir
+create view public.profile_activity_counts as
+select user_id, count(*) as ratings_count
+from public.ratings
+group by user_id;
+
 -- ---------------------------------------------------------
 -- Trigger genérico de updated_at
 -- ---------------------------------------------------------
@@ -217,9 +349,14 @@ alter table public.albums enable row level security;
 alter table public.tracks enable row level security;
 alter table public.ratings enable row level security;
 alter table public.reviews enable row level security;
+alter table public.review_likes enable row level security;
+alter table public.review_comments enable row level security;
+alter table public.notifications enable row level security;
 alter table public.follows enable row level security;
 alter table public.lists enable row level security;
 alter table public.list_items enable row level security;
+alter table public.list_collaborators enable row level security;
+alter table public.wishlist_items enable row level security;
 
 -- profiles
 create policy "profiles_select_all" on public.profiles for select using (true);
@@ -242,29 +379,87 @@ create policy "reviews_insert_own" on public.reviews for insert with check (auth
 create policy "reviews_update_own" on public.reviews for update using (auth.uid() = user_id);
 create policy "reviews_delete_own" on public.reviews for delete using (auth.uid() = user_id);
 
+-- review_likes
+create policy "review_likes_select_all" on public.review_likes for select using (true);
+create policy "review_likes_insert_own" on public.review_likes for insert with check (auth.uid() = user_id);
+create policy "review_likes_delete_own" on public.review_likes for delete using (auth.uid() = user_id);
+
+-- review_comments
+create policy "review_comments_select_all" on public.review_comments for select using (true);
+create policy "review_comments_insert_own" on public.review_comments for insert with check (auth.uid() = user_id);
+create policy "review_comments_delete_own" on public.review_comments for delete using (auth.uid() = user_id);
+
+-- notifications — só o próprio destinatário vê/atualiza; inserir é feito
+-- só pelos triggers (security definer), nenhuma policy de insert aqui
+create policy "notifications_select_own" on public.notifications for select using (auth.uid() = user_id);
+create policy "notifications_update_own" on public.notifications for update using (auth.uid() = user_id);
+
 -- follows
 create policy "follows_select_all" on public.follows for select using (true);
 create policy "follows_insert_own" on public.follows for insert with check (auth.uid() = follower_id);
 create policy "follows_delete_own" on public.follows for delete using (auth.uid() = follower_id);
 
--- lists
+-- lists (dono ou colaborador podem ver listas privadas; só o dono edita
+-- título/descrição/visibilidade)
 create policy "lists_select_visible" on public.lists
-  for select using (is_public = true or auth.uid() = user_id);
+  for select using (
+    is_public = true
+    or auth.uid() = user_id
+    or exists (select 1 from public.list_collaborators lc where lc.list_id = lists.id and lc.user_id = auth.uid())
+  );
 create policy "lists_insert_own" on public.lists for insert with check (auth.uid() = user_id);
 create policy "lists_update_own" on public.lists for update using (auth.uid() = user_id);
 create policy "lists_delete_own" on public.lists for delete using (auth.uid() = user_id);
 
--- list items (segue a visibilidade da lista)
+-- list items (dono OU colaborador podem inserir/remover/reordenar itens)
 create policy "list_items_select_visible" on public.list_items for select using (
   exists (
     select 1 from public.lists l
     where l.id = list_items.list_id
-    and (l.is_public = true or l.user_id = auth.uid())
+    and (
+      l.is_public = true
+      or l.user_id = auth.uid()
+      or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid())
+    )
   )
 );
-create policy "list_items_insert_own_list" on public.list_items for insert with check (
+create policy "list_items_insert_own_or_collab" on public.list_items for insert with check (
+  exists (
+    select 1 from public.lists l
+    where l.id = list_id
+    and (l.user_id = auth.uid() or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid()))
+  )
+);
+create policy "list_items_update_own_or_collab" on public.list_items for update using (
+  exists (
+    select 1 from public.lists l
+    where l.id = list_id
+    and (l.user_id = auth.uid() or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid()))
+  )
+);
+create policy "list_items_delete_own_or_collab" on public.list_items for delete using (
+  exists (
+    select 1 from public.lists l
+    where l.id = list_id
+    and (l.user_id = auth.uid() or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid()))
+  )
+);
+
+-- list_collaborators: dono da lista gerencia; um colaborador pode sair
+-- sozinho (remover a própria linha)
+create policy "list_collaborators_select" on public.list_collaborators for select using (
+  exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid())
+  or user_id = auth.uid()
+);
+create policy "list_collaborators_insert_owner" on public.list_collaborators for insert with check (
   exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid())
 );
-create policy "list_items_delete_own_list" on public.list_items for delete using (
+create policy "list_collaborators_delete_owner_or_self" on public.list_collaborators for delete using (
   exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid())
+  or user_id = auth.uid()
 );
+
+-- wishlist (lista de desejos) — só o próprio dono vê/mexe
+create policy "wishlist_select_own" on public.wishlist_items for select using (auth.uid() = user_id);
+create policy "wishlist_insert_own" on public.wishlist_items for insert with check (auth.uid() = user_id);
+create policy "wishlist_delete_own" on public.wishlist_items for delete using (auth.uid() = user_id);

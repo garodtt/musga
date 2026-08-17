@@ -2,14 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useDebounce } from '../../hooks/useDebounce'
-import { searchMusic } from '../../lib/spotify'
+import { useTheme } from '../../hooks/useTheme'
+import { searchMusic, fetchAlbum } from '../../lib/spotify'
+import { rateTrack } from '../../lib/db'
+import NotificationsBell from '../notifications/NotificationsBell'
+import SignalRating from '../rating/SignalRating'
 
 export default function Navbar() {
   const { user, profile, signOut } = useAuth()
+  const [theme, setTheme] = useTheme()
   const [query, setQuery] = useState('')
   const [liveResults, setLiveResults] = useState(null)
   const [loadingLive, setLoadingLive] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [quickRateStatus, setQuickRateStatus] = useState({})
   const debouncedQuery = useDebounce(query, 300)
   const navigate = useNavigate()
   const wrapperRef = useRef(null)
@@ -58,6 +64,22 @@ export default function Navbar() {
   function handleSearchSubmit(e) {
     e.preventDefault()
     if (query.trim()) goTo(`/buscar?q=${encodeURIComponent(query.trim())}`)
+  }
+
+  /** Avalia uma faixa direto no dropdown de busca, sem abrir o álbum.
+   * Precisa cachear o álbum primeiro pra existir um id local pra faixa
+   * (é rápido se o álbum já tiver sido visitado por alguém antes). */
+  async function handleQuickRate(track, score) {
+    if (!user) return
+    setQuickRateStatus((prev) => ({ ...prev, [track.spotify_id]: 'saving' }))
+    try {
+      const { tracks } = await fetchAlbum(track.album_spotify_id)
+      const localTrack = tracks.find((t) => t.spotify_id === track.spotify_id)
+      if (localTrack) await rateTrack(localTrack.id, user.id, score)
+      setQuickRateStatus((prev) => ({ ...prev, [track.spotify_id]: 'done' }))
+    } catch {
+      setQuickRateStatus((prev) => ({ ...prev, [track.spotify_id]: null }))
+    }
   }
 
   const hasLiveResults =
@@ -123,18 +145,29 @@ export default function Navbar() {
             ))}
 
             {liveResults?.tracks.slice(0, 4).map((t) => (
-              <button
-                key={t.spotify_id}
-                type="button"
-                className="item-row search-dropdown__item"
-                onClick={() => goTo(`/album/${t.album_spotify_id}`)}
-              >
-                <img src={t.album_cover_url || undefined} alt="" className="item-row__cover" />
-                <div>
-                  <div className="item-row__title">{t.name}</div>
-                  <div className="item-row__subtitle">{t.artist_name} · Faixa</div>
+              <div key={t.spotify_id} className="item-row search-dropdown__item">
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  onClick={() => goTo(`/album/${t.album_spotify_id}`)}
+                >
+                  <img src={t.album_cover_url || undefined} alt="" className="item-row__cover" />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="item-row__title">{t.name}</div>
+                    <div className="item-row__subtitle">{t.artist_name} · Faixa</div>
+                  </div>
                 </div>
-              </button>
+                {user && (
+                  <div className="quick-rate" onClick={(e) => e.stopPropagation()}>
+                    {quickRateStatus[t.spotify_id] === 'done' ? (
+                      <span className="mono" style={{ color: 'var(--accent-strong)', fontSize: 12 }}>
+                        avaliado ✓
+                      </span>
+                    ) : (
+                      <SignalRating value={0} onRate={(score) => handleQuickRate(t, score)} size="sm" />
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
 
             {hasLiveResults && (
@@ -154,10 +187,20 @@ export default function Navbar() {
         <NavLink to="/" end>
           Início
         </NavLink>
+        {user && <NavLink to="/pessoas">Pessoas</NavLink>}
         {user && <NavLink to="/listas">Minhas listas</NavLink>}
         {user && <NavLink to="/desejos">Ouvir depois</NavLink>}
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         {user ? (
           <>
+            <NotificationsBell />
             <NavLink to={`/perfil/${profile?.username ?? ''}`}>Perfil</NavLink>
             <button className="btn btn--ghost btn--sm" onClick={signOut}>
               Sair

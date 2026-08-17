@@ -39,6 +39,24 @@ export const BADGE_DEFINITIONS = [
     description: 'Avaliou faixas de 10 artistas diferentes',
     check: (s) => s.distinctArtists >= 10,
   },
+  {
+    id: 'madrugador',
+    label: 'Madrugador',
+    description: 'Avaliou algo lançado há menos de 7 dias',
+    check: (s) => s.hasEarlyBird,
+  },
+  {
+    id: 'nostalgico',
+    label: 'Nostálgico',
+    description: 'Avaliou um álbum com mais de 20 anos',
+    check: (s) => s.hasNostalgic,
+  },
+  {
+    id: 'sequencia_7',
+    label: 'Semana cheia',
+    description: 'Avaliou algo por 7 dias seguidos',
+    check: (s) => s.streakDays >= 7,
+  },
 ]
 
 export function computeBadges(stats) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -11,6 +11,13 @@ import {
 import ActivityRow from '../components/cards/ActivityRow'
 import AlbumCard from '../components/cards/AlbumCard'
 
+function decadeOf(releaseDate) {
+  if (!releaseDate) return null
+  const year = Number(releaseDate.slice(0, 4))
+  if (!year) return null
+  return `${Math.floor(year / 10) * 10}s`
+}
+
 export default function Home() {
   const { user } = useAuth()
   const [feed, setFeed] = useState([])
@@ -19,11 +26,13 @@ export default function Home() {
   const [trending, setTrending] = useState([])
   const [recommended, setRecommended] = useState([])
   const [loaded, setLoaded] = useState(false)
+  const [genreFilter, setGenreFilter] = useState(null)
+  const [decadeFilter, setDecadeFilter] = useState(null)
 
   useEffect(() => {
     Promise.all([
       user ? getFeedForUser(user.id) : Promise.resolve([]),
-      getTopRatedAlbums(10),
+      getTopRatedAlbums(20),
       getRecentSiteActivity(10),
       getTrendingTracks(8),
       user ? getRecommendedAlbumsForUser(user.id, 8) : Promise.resolve([]),
@@ -37,6 +46,27 @@ export default function Home() {
       })
       .finally(() => setLoaded(true))
   }, [user])
+
+  const availableGenres = useMemo(() => {
+    const set = new Set()
+    topAlbums.forEach((s) => s.album.artists?.genres?.forEach((g) => set.add(g)))
+    return [...set].slice(0, 10)
+  }, [topAlbums])
+
+  const availableDecades = useMemo(() => {
+    const set = new Set()
+    topAlbums.forEach((s) => {
+      const d = decadeOf(s.album.release_date)
+      if (d) set.add(d)
+    })
+    return [...set].sort()
+  }, [topAlbums])
+
+  const filteredTopAlbums = topAlbums.filter((s) => {
+    if (genreFilter && !s.album.artists?.genres?.includes(genreFilter)) return false
+    if (decadeFilter && decadeOf(s.album.release_date) !== decadeFilter) return false
+    return true
+  })
 
   return (
     <div className="page">
@@ -116,8 +146,38 @@ export default function Home() {
       {topAlbums.length > 0 && (
         <section style={{ marginBottom: 40 }}>
           <p className="section-title">Mais bem avaliados no Musgas</p>
+
+          {(availableGenres.length > 0 || availableDecades.length > 0) && (
+            <div className="filter-chips">
+              {availableDecades.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={`chip ${decadeFilter === d ? 'chip--active' : ''}`}
+                  onClick={() => setDecadeFilter(decadeFilter === d ? null : d)}
+                >
+                  {d}
+                </button>
+              ))}
+              {availableGenres.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  className={`chip ${genreFilter === g ? 'chip--active' : ''}`}
+                  onClick={() => setGenreFilter(genreFilter === g ? null : g)}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {filteredTopAlbums.length === 0 && (
+            <p style={{ color: 'var(--text-faint)', fontSize: 13.5 }}>Nada com esse filtro ainda.</p>
+          )}
+
           <div className="grid">
-            {topAlbums.map((s) => (
+            {filteredTopAlbums.map((s) => (
               <AlbumCard
                 key={s.album.id}
                 spotifyId={s.album.spotify_id}

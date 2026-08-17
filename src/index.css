@@ -32,6 +32,29 @@
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* Tema claro — mesma identidade (charcoal-ameixa + âmbar), só invertida
+   em luminosidade. Troca é feita via [data-theme] na tag <html>. */
+:root[data-theme='light'] {
+  --bg: #f6f3f7;
+  --surface: #ffffff;
+  --surface-2: #ece7f0;
+  --border: rgba(31, 27, 38, 0.1);
+  --border-strong: rgba(31, 27, 38, 0.18);
+
+  --text: #1f1b26;
+  --text-dim: #55506b;
+  --text-faint: #8a84a0;
+
+  --accent: #c9822e;
+  --accent-strong: #a8691f;
+  --accent-soft: rgba(201, 130, 46, 0.14);
+
+  --accent-2: #2f8d81;
+  --danger: #b23a4c;
+
+  --shadow: 0 8px 24px rgba(31, 27, 38, 0.12);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -666,6 +689,196 @@ textarea.input {
   color: var(--text-dim);
   font-size: 14px;
   white-space: pre-wrap;
+}
+
+.review__actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.review__action {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text-faint);
+  padding: 2px 0;
+}
+
+.review__action:hover {
+  color: var(--text-dim);
+}
+
+.review__action--active {
+  color: var(--accent-strong);
+}
+
+.review__comments {
+  margin-top: 10px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+}
+
+.review__comment {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.review__comment-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.review__comment-form .input {
+  font-size: 13px;
+}
+
+/* ---------- Sino de notificações ---------- */
+
+.notif-bell {
+  position: relative;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--text-dim);
+  line-height: 1;
+  padding: 4px;
+}
+
+.notif-bell:hover {
+  color: var(--text);
+}
+
+.notif-bell__badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: var(--accent);
+  color: #201405;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+}
+
+.notif-dropdown {
+  left: auto;
+  right: 0;
+  width: 320px;
+}
+
+/* ---------- Chips de filtro (gênero/década na Home) ---------- */
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chip {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chip--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+/* ---------- Tags de lista ---------- */
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.tag-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+/* ---------- Colaboradores de lista ---------- */
+
+.collaborator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.collaborator-row__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+/* ---------- Reordenar itens da lista (drag and drop) ---------- */
+
+.item-row--draggable {
+  cursor: grab;
+}
+
+.item-row--drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+.drag-handle {
+  color: var(--text-faint);
+  font-size: 14px;
+  padding: 0 4px;
+  cursor: grab;
+}
+
+/* ---------- Toggle de tema ---------- */
+
+.theme-toggle {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--text-dim);
+  padding: 4px;
+  line-height: 1;
+}
+
+.theme-toggle:hover {
+  color: var(--text);
+}
+
+/* ---------- Avaliar rápido na busca ---------- */
+
+.quick-rate {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ---------- Cartão genérico ---------- */

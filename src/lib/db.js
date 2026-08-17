@@ -271,11 +271,12 @@ export async function getRecommendedAlbumsForUser(userId, limit = 8) {
 
 /** Estatísticas de um usuário — usadas na página de perfil (selos, resumo). */
 export async function getUserStats(userId) {
-  const [ratingsCountRes, reviewsCountRes, listsCountRes, ratingsWithArtist] = await Promise.all([
+  const [ratingsCountRes, reviewsCountRes, listsCountRes, ratingsWithArtist, ratingsWithDates] = await Promise.all([
     supabase.from('ratings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('reviews').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('lists').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('ratings').select('score, tracks ( artist_id, artists ( name ) )').eq('user_id', userId),
+    supabase.from('ratings').select('created_at, tracks ( albums ( release_date ) )').eq('user_id', userId),
   ])
 
   const rows = ratingsWithArtist.data || []
@@ -289,6 +290,22 @@ export async function getUserStats(userId) {
   })
   const topArtistEntry = Object.entries(artistCounts).sort((a, b) => b[1] - a[1])[0]
 
+  const dateRows = ratingsWithDates.data || []
+  const hasEarlyBird = dateRows.some((r) => {
+    const releaseDate = r.tracks?.albums?.release_date
+    if (!releaseDate) return false
+    const days = (new Date(r.created_at) - new Date(releaseDate)) / 86400000
+    return days >= 0 && days <= 7
+  })
+  const hasNostalgic = dateRows.some((r) => {
+    const releaseDate = r.tracks?.albums?.release_date
+    if (!releaseDate) return false
+    const years = (new Date(r.created_at) - new Date(releaseDate)) / (365.25 * 86400000)
+    return years >= 20
+  })
+  const distinctDays = [...new Set(dateRows.map((r) => r.created_at.slice(0, 10)))]
+  const streakDays = computeCurrentStreak(distinctDays)
+
   return {
     ratingsCount: ratingsCountRes.count || 0,
     reviewsCount: reviewsCountRes.count || 0,
@@ -296,7 +313,75 @@ export async function getUserStats(userId) {
     avgScore: avgScore != null ? Math.round(avgScore * 100) / 100 : null,
     topArtist: topArtistEntry ? { name: topArtistEntry[0], count: topArtistEntry[1] } : null,
     distinctArtists: Object.keys(artistCounts).length,
+    hasEarlyBird,
+    hasNostalgic,
+    streakDays,
   }
+}
+
+function computeCurrentStreak(daysList) {
+  if (!daysList.length) return 0
+  const daySet = new Set(daysList)
+  let streak = 0
+  const cursor = new Date()
+  cursor.setHours(0, 0, 0, 0)
+  if (!daySet.has(cursor.toISOString().slice(0, 10))) {
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  while (daySet.has(cursor.toISOString().slice(0, 10))) {
+    streak++
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return streak
+}
+
+/** Distribuição das notas que o usuário deu (1 a 5), em percentual. */
+export async function getUserRatingDistribution(userId) {
+  const { data, error } = await supabase.from('ratings').select('score').eq('user_id', userId)
+  if (error) throw error
+  const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  data.forEach((r) => {
+    counts[r.score] = (counts[r.score] || 0) + 1
+  })
+  const total = data.length
+  return [1, 2, 3, 4, 5].map((score) => ({
+    score,
+    count: counts[score],
+    pct: total ? Math.round((counts[score] / total) * 100) : 0,
+  }))
+}
+
+/** Top artistas e álbuns pessoais do usuário, por quantidade de faixas avaliadas. */
+export async function getUserTopArtistsAndAlbums(userId, limit = 5) {
+  const { data, error } = await supabase
+    .from('ratings')
+    .select('tracks ( album_id, artists ( name ), albums ( name, spotify_id, cover_url ) )')
+    .eq('user_id', userId)
+  if (error) throw error
+
+  const artistCounts = {}
+  const albumCounts = {}
+  ;(data || []).forEach((r) => {
+    const artistName = r.tracks?.artists?.name
+    if (artistName) artistCounts[artistName] = (artistCounts[artistName] || 0) + 1
+
+    const albumId = r.tracks?.album_id
+    if (albumId) {
+      if (!albumCounts[albumId]) albumCounts[albumId] = { count: 0, album: r.tracks?.albums }
+      albumCounts[albumId].count += 1
+    }
+  })
+
+  const topArtists = Object.entries(artistCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name, count]) => ({ name, count }))
+
+  const topAlbums = Object.values(albumCounts)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+
+  return { topArtists, topAlbums }
 }
 
 /** Atividade recente (notas) de todo o site — usada na Home para dar vida à página. */
@@ -327,7 +412,7 @@ export async function getTopRatedAlbums(limit = 10) {
   const albumIds = stats.map((s) => s.album_id)
   const { data: albums, error: albumsError } = await supabase
     .from('albums')
-    .select('id, name, spotify_id, cover_url, artists ( name )')
+    .select('id, name, spotify_id, cover_url, release_date, artists ( name, genres )')
     .in('id', albumIds)
   if (albumsError) throw albumsError
 
@@ -375,16 +460,258 @@ export async function getRecentRatingsByUser(userId) {
   return data
 }
 
+// ---------- Curtidas em reviews ----------
+
+/** Mapa reviewId -> { count, likedByMe }, para uma lista de reviews. */
+export async function getReviewLikesInfo(reviewIds, userId) {
+  const info = {}
+  reviewIds.forEach((id) => {
+    info[id] = { count: 0, likedByMe: false }
+  })
+  if (!reviewIds.length) return info
+
+  const { data, error } = await supabase.from('review_likes').select('review_id, user_id').in('review_id', reviewIds)
+  if (error) throw error
+  data.forEach((row) => {
+    info[row.review_id].count += 1
+    if (userId && row.user_id === userId) info[row.review_id].likedByMe = true
+  })
+  return info
+}
+
+export async function likeReview(reviewId, userId) {
+  const { error } = await supabase.from('review_likes').insert({ review_id: reviewId, user_id: userId })
+  if (error && error.code !== '23505') throw error
+}
+
+export async function unlikeReview(reviewId, userId) {
+  const { error } = await supabase.from('review_likes').delete().eq('review_id', reviewId).eq('user_id', userId)
+  if (error) throw error
+}
+
+// ---------- Comentários em reviews ----------
+
+export async function getCommentsForReview(reviewId) {
+  const { data, error } = await supabase
+    .from('review_comments')
+    .select('id, body, created_at, user_id, profiles ( username, display_name, avatar_url )')
+    .eq('review_id', reviewId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function addReviewComment(reviewId, userId, body) {
+  const { error } = await supabase.from('review_comments').insert({ review_id: reviewId, user_id: userId, body })
+  if (error) throw error
+}
+
+export async function deleteReviewComment(commentId) {
+  const { error } = await supabase.from('review_comments').delete().eq('id', commentId)
+  if (error) throw error
+}
+
+// ---------- Notificações ----------
+
+export async function getNotifications(userId, limit = 20) {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select(`
+      id, type, read, created_at,
+      actor:profiles!actor_id ( username, display_name, avatar_url ),
+      reviews ( id, tracks ( name, albums ( spotify_id ) ) )
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data
+}
+
+export async function getUnreadNotificationCount(userId) {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false)
+  if (error) throw error
+  return count || 0
+}
+
+export async function markNotificationsRead(userId) {
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false)
+  if (error) throw error
+}
+
+// ---------- Comparação de gosto musical ----------
+
+/**
+ * % de "concordância" entre dois usuários nas faixas que ambos avaliaram
+ * (nota com diferença de até 1 ponto conta como "de acordo"). Retorna
+ * null se não há faixas em comum avaliadas pelos dois.
+ */
+export async function getTasteCompatibility(userIdA, userIdB) {
+  const [resA, resB] = await Promise.all([
+    supabase.from('ratings').select('track_id, score').eq('user_id', userIdA),
+    supabase.from('ratings').select('track_id, score').eq('user_id', userIdB),
+  ])
+  if (resA.error) throw resA.error
+  if (resB.error) throw resB.error
+
+  const scoresB = Object.fromEntries(resB.data.map((r) => [r.track_id, r.score]))
+  const common = resA.data.filter((r) => scoresB[r.track_id] != null)
+  if (!common.length) return null
+
+  const agreements = common.filter((r) => Math.abs(r.score - scoresB[r.track_id]) <= 1).length
+  return {
+    pct: Math.round((agreements / common.length) * 100),
+    commonCount: common.length,
+  }
+}
+
+// ---------- Descobrir pessoas pra seguir ----------
+
+export async function searchProfiles(query, excludeUserId, limit = 20) {
+  let q = supabase.from('profiles').select('id, username, display_name, avatar_url, bio').limit(limit)
+  if (query.trim()) {
+    q = q.or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+  } else {
+    q = q.order('created_at', { ascending: false })
+  }
+  const { data, error } = await q
+  if (error) throw error
+  return excludeUserId ? data.filter((p) => p.id !== excludeUserId) : data
+}
+
+/** Sugestão simples: os usuários mais ativos (mais notas dadas), exclui você mesmo. */
+export async function getSuggestedProfiles(userId, limit = 10) {
+  const { data: activity, error } = await supabase
+    .from('profile_activity_counts')
+    .select('user_id, ratings_count')
+    .order('ratings_count', { ascending: false })
+    .limit(limit + 1)
+  if (error) throw error
+
+  const ids = activity.map((a) => a.user_id).filter((id) => id !== userId).slice(0, limit)
+  if (!ids.length) return []
+
+  const { data: profiles, error: pErr } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url, bio')
+    .in('id', ids)
+  if (pErr) throw pErr
+  const byId = Object.fromEntries(profiles.map((p) => [p.id, p]))
+  return ids.map((id) => byId[id]).filter(Boolean)
+}
+
+/** ids dos usuários que o usuário logado já segue — usado pra marcar quem já é seguido. */
+export async function getFollowingIds(userId) {
+  const { data, error } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+  if (error) throw error
+  return new Set(data.map((f) => f.following_id))
+}
+
+// ---------- "Quem ouviu isso também ouviu" ----------
+
+/**
+ * Outros álbuns bem avaliados (nota 4-5) pelas mesmas pessoas que também
+ * avaliaram bem alguma faixa deste álbum. Usa só dados já no nosso banco.
+ */
+export async function getListenersAlsoLiked(albumId, limit = 8) {
+  const { data: albumTracks, error: tErr } = await supabase.from('tracks').select('id').eq('album_id', albumId)
+  if (tErr) throw tErr
+  const trackIds = albumTracks.map((t) => t.id)
+  if (!trackIds.length) return []
+
+  const { data: likers, error: lErr } = await supabase
+    .from('ratings')
+    .select('user_id')
+    .in('track_id', trackIds)
+    .gte('score', 4)
+  if (lErr) throw lErr
+  const userIds = [...new Set(likers.map((l) => l.user_id))]
+  if (!userIds.length) return []
+
+  const { data: otherRatings, error: oErr } = await supabase
+    .from('ratings')
+    .select('tracks ( album_id )')
+    .in('user_id', userIds)
+    .gte('score', 4)
+  if (oErr) throw oErr
+
+  const albumCounts = {}
+  otherRatings.forEach((r) => {
+    const aId = r.tracks?.album_id
+    if (!aId || aId === albumId) return
+    albumCounts[aId] = (albumCounts[aId] || 0) + 1
+  })
+  const topIds = Object.entries(albumCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => id)
+  if (!topIds.length) return []
+
+  const { data: albums, error: aErr } = await supabase
+    .from('albums')
+    .select('id, name, spotify_id, cover_url, artists ( name )')
+    .in('id', topIds)
+  if (aErr) throw aErr
+  const byId = Object.fromEntries(albums.map((a) => [a.id, a]))
+  return topIds.map((id) => byId[id]).filter(Boolean)
+}
+
+// ---------- Resumo por período (semana/mês) ----------
+
+export async function getUserRecap(userId) {
+  const now = new Date()
+  const startOfWeek = new Date(now)
+  startOfWeek.setDate(now.getDate() - now.getDay())
+  startOfWeek.setHours(0, 0, 0, 0)
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  function summarize(rows) {
+    if (!rows.length) return { count: 0, avg: null }
+    return { count: rows.length, avg: Math.round((rows.reduce((sum, r) => sum + r.score, 0) / rows.length) * 100) / 100 }
+  }
+
+  const [weekRes, monthRes] = await Promise.all([
+    supabase.from('ratings').select('score').eq('user_id', userId).gte('created_at', startOfWeek.toISOString()),
+    supabase.from('ratings').select('score').eq('user_id', userId).gte('created_at', startOfMonth.toISOString()),
+  ])
+  if (weekRes.error) throw weekRes.error
+  if (monthRes.error) throw monthRes.error
+
+  return { week: summarize(weekRes.data), month: summarize(monthRes.data) }
+}
+
 // ---------- Listas ----------
 
 export async function getListsByUser(userId) {
-  const { data, error } = await supabase
+  const { data: owned, error } = await supabase
     .from('lists')
     .select('*, list_items ( id )')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
   if (error) throw error
-  return data
+
+  const { data: collabRows, error: collabError } = await supabase
+    .from('list_collaborators')
+    .select('list_id')
+    .eq('user_id', userId)
+  if (collabError) throw collabError
+
+  const collabIds = collabRows.map((c) => c.list_id)
+  let collabLists = []
+  if (collabIds.length) {
+    const { data, error: collabListsError } = await supabase
+      .from('lists')
+      .select('*, list_items ( id )')
+      .in('id', collabIds)
+    if (collabListsError) throw collabListsError
+    collabLists = data
+  }
+
+  return [...owned, ...collabLists]
 }
 
 export async function getListById(listId) {
@@ -406,18 +733,64 @@ export async function getListById(listId) {
   return data
 }
 
-export async function createList(userId, title, description, isPublic) {
+export async function createList(userId, title, description, isPublic, tags = []) {
   const { data, error } = await supabase
     .from('lists')
-    .insert({ user_id: userId, title, description, is_public: isPublic })
+    .insert({ user_id: userId, title, description, is_public: isPublic, tags })
     .select()
     .single()
   if (error) throw error
   return data
 }
 
+export async function updateListTags(listId, tags) {
+  const { error } = await supabase.from('lists').update({ tags }).eq('id', listId)
+  if (error) throw error
+}
+
 export async function deleteList(listId) {
   const { error } = await supabase.from('lists').delete().eq('id', listId)
+  if (error) throw error
+}
+
+/** Atualiza a posição de vários itens de uma lista de uma vez (drag and drop). */
+export async function updateListItemPositions(itemsWithPositions) {
+  await Promise.all(
+    itemsWithPositions.map(({ id, position }) => supabase.from('list_items').update({ position }).eq('id', id))
+  )
+}
+
+// ---------- Colaboradores de lista ----------
+
+export async function getCollaborators(listId) {
+  const { data, error } = await supabase
+    .from('list_collaborators')
+    .select('user_id, profiles ( username, display_name, avatar_url )')
+    .eq('list_id', listId)
+  if (error) throw error
+  return data
+}
+
+export async function addCollaboratorByUsername(listId, username) {
+  const profile = await getProfileByUsername(username)
+  if (!profile) throw new Error('Usuário não encontrado.')
+  const { error } = await supabase.from('list_collaborators').insert({ list_id: listId, user_id: profile.id })
+  if (error) {
+    if (error.code === '23505') throw new Error('Essa pessoa já é colaboradora dessa lista.')
+    throw error
+  }
+  return profile
+}
+
+export async function removeCollaborator(listId, userId) {
+  const { error } = await supabase.from('list_collaborators').delete().eq('list_id', listId).eq('user_id', userId)
+  if (error) throw error
+}
+
+// ---------- Editar perfil ----------
+
+export async function updateProfile(userId, updates) {
+  const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
   if (error) throw error
 }
 
