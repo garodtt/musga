@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { updateProfile } from '../lib/db'
+import { updateProfile, uploadAvatar } from '../lib/db'
+import AvatarCropper from '../components/profile/AvatarCropper'
 
 export default function EditProfilePage() {
   const { profile, user, refreshProfile } = useAuth()
@@ -9,6 +10,8 @@ export default function EditProfilePage() {
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [pendingFile, setPendingFile] = useState(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -19,6 +22,26 @@ export default function EditProfilePage() {
       setAvatarUrl(profile.avatar_url || '')
     }
   }, [profile])
+
+  function handleFileSelect(e) {
+    const file = e.target.files?.[0]
+    if (file) setPendingFile(file)
+    e.target.value = ''
+  }
+
+  async function handleCropConfirm(blob) {
+    setUploadingAvatar(true)
+    setError('')
+    try {
+      const url = await uploadAvatar(user.id, blob)
+      setAvatarUrl(url)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setUploadingAvatar(false)
+      setPendingFile(null)
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -48,6 +71,23 @@ export default function EditProfilePage() {
 
         <form onSubmit={handleSubmit}>
           <div className="field">
+            <label>Foto de perfil</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <img src={avatarUrl || undefined} alt="" className="profile-header__avatar" />
+              <label className="btn btn--sm" style={{ cursor: 'pointer' }}>
+                {uploadingAvatar ? 'Enviando…' : 'Escolher foto'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                  disabled={uploadingAvatar}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="field">
             <label>Nome de exibição</label>
             <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
           </div>
@@ -55,17 +95,6 @@ export default function EditProfilePage() {
           <div className="field">
             <label>Bio</label>
             <textarea className="input" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={280} />
-          </div>
-
-          <div className="field">
-            <label>URL do avatar</label>
-            <input
-              className="input"
-              placeholder="https://…"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-            />
-            {avatarUrl && <img src={avatarUrl} alt="" className="profile-header__avatar" style={{ marginTop: 10 }} />}
           </div>
 
           {error && <p className="error-text">{error}</p>}
@@ -80,6 +109,10 @@ export default function EditProfilePage() {
           </div>
         </form>
       </div>
+
+      {pendingFile && (
+        <AvatarCropper file={pendingFile} onCancel={() => setPendingFile(null)} onConfirm={handleCropConfirm} />
+      )}
     </div>
   )
 }

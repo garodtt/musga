@@ -13,9 +13,12 @@ import {
   getUserRecap,
   getUserRatingDistribution,
   getUserTopArtistsAndAlbums,
+  getFollowersList,
+  getFollowingListProfiles,
 } from '../lib/db'
 import { computeBadges } from '../lib/badges'
 import RatingDistribution from '../components/rating/RatingDistribution'
+import FollowListModal from '../components/profile/FollowListModal'
 
 export default function ProfilePage() {
   const { username } = useParams()
@@ -31,6 +34,20 @@ export default function ProfilePage() {
   const [distribution, setDistribution] = useState([])
   const [topArtistsAlbums, setTopArtistsAlbums] = useState({ topArtists: [], topAlbums: [] })
   const [notFound, setNotFound] = useState(false)
+  const [followModal, setFollowModal] = useState(null) // 'followers' | 'following' | null
+  const [modalProfiles, setModalProfiles] = useState([])
+  const [modalLoading, setModalLoading] = useState(false)
+
+  async function openFollowModal(type) {
+    setFollowModal(type)
+    setModalLoading(true)
+    try {
+      const list = type === 'followers' ? await getFollowersList(profile.id) : await getFollowingListProfiles(profile.id)
+      setModalProfiles(list)
+    } finally {
+      setModalLoading(false)
+    }
+  }
 
   useEffect(() => {
     setProfile(null)
@@ -109,12 +126,12 @@ export default function ProfilePage() {
           <p style={{ color: 'var(--text-faint)', fontSize: 13.5 }}>@{profile.username}</p>
           {profile.bio && <p style={{ color: 'var(--text-dim)', marginTop: 6 }}>{profile.bio}</p>}
           <div className="profile-header__stats">
-            <span>
+            <button className="link-button" onClick={() => openFollowModal('followers')}>
               <b className="mono">{counts.followers}</b> seguidores
-            </span>
-            <span>
+            </button>
+            <button className="link-button" onClick={() => openFollowModal('following')}>
               <b className="mono">{counts.following}</b> seguindo
-            </span>
+            </button>
           </div>
         </div>
 
@@ -274,6 +291,15 @@ export default function ProfilePage() {
           </Link>
         ))}
       </div>
+
+      {followModal && (
+        <FollowListModal
+          title={followModal === 'followers' ? 'Seguidores' : 'Seguindo'}
+          profiles={modalProfiles}
+          loading={modalLoading}
+          onClose={() => setFollowModal(null)}
+        />
+      )}
     </div>
   )
 }

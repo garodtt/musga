@@ -814,6 +814,158 @@ export async function updateProfile(userId, updates) {
   if (error) throw error
 }
 
+/** Envia a foto (já recortada, como Blob) para o Storage e retorna a URL pública. */
+export async function uploadAvatar(userId, blob) {
+  const path = `${userId}/avatar.png`
+  const { error } = await supabase.storage.from('avatars').upload(path, blob, {
+    upsert: true,
+    contentType: 'image/png',
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+  // cache-busting: sem isso o navegador pode continuar mostrando a foto antiga,
+  // já que o caminho do arquivo é sempre o mesmo.
+  return `${data.publicUrl}?v=${Date.now()}`
+}
+
+// ---------- Listas de seguidores/seguindo (estilo Instagram) ----------
+
+export async function getFollowersList(userId) {
+  const { data: rows, error } = await supabase.from('follows').select('follower_id').eq('following_id', userId)
+  if (error) throw error
+  if (!rows.length) return []
+  const { data: profiles, error: pErr } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', rows.map((r) => r.follower_id))
+  if (pErr) throw pErr
+  return profiles
+}
+
+export async function getFollowingListProfiles(userId) {
+  const { data: rows, error } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+  if (error) throw error
+  if (!rows.length) return []
+  const { data: profiles, error: pErr } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', rows.map((r) => r.following_id))
+  if (pErr) throw pErr
+  return profiles
+}
+
+// ---------- Página do artista ("tudo dele") ----------
+
+/** Nota média e total de avaliações da comunidade para todas as faixas do artista. */
+export async function getArtistCommunityStats(artistId) {
+  const { data: tracks, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
+  if (error) throw error
+  const trackIds = tracks.map((t) => t.id)
+  if (!trackIds.length) return { avgScore: null, totalRatings: 0 }
+
+  const { data: ratings, error: rErr } = await supabase.from('ratings').select('score').in('track_id', trackIds)
+  if (rErr) throw rErr
+  if (!ratings.length) return { avgScore: null, totalRatings: 0 }
+
+  const avg = ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
+  return { avgScore: Math.round(avg * 100) / 100, totalRatings: ratings.length }
+}
+
+/** Faixas do artista mais bem avaliadas pela comunidade do Musgas. */
+export async function getTopTracksForArtist(artistId, limit = 10) {
+  const { data: tracks, error } = await supabase
+    .from('tracks')
+    .select('id, name, album_id, albums ( name, spotify_id, cover_url )')
+    .eq('artist_id', artistId)
+  if (error) throw error
+  if (!tracks.length) return []
+
+  const trackIds = tracks.map((t) => t.id)
+  const { data: stats, error: sErr } = await supabase
+    .from('track_rating_stats')
+    .select('track_id, avg_score, rating_count')
+    .in('track_id', trackIds)
+  if (sErr) throw sErr
+
+  const statsById = Object.fromEntries(stats.map((s) => [s.track_id, s]))
+  return tracks
+    .map((t) => ({ ...t, stats: statsById[t.id] }))
+    .filter((t) => t.stats)
+    .sort((a, b) => b.stats.avg_score - a.stats.avg_score || b.stats.rating_count - a.stats.rating_count)
+    .slice(0, limit)
+}
+
+/** Reviews recentes escritas sobre qualquer faixa deste artista. */
+export async function getRecentReviewsForArtist(artistId, limit = 6) {
+  const { data: tracks, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
+  if (error) throw error
+  const trackIds = tracks.map((t) => t.id)
+  if (!trackIds.length) return []
+
+  const { data: reviews, error: rErr } = await supabase
+    .from('reviews')
+    .select('id, body, created_at, user_id, tracks ( name )')
+    .in('track_id', trackIds)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (rErr) throw rErr
+  if (!reviews.length) return []
+
+  const userIds = [...new Set(reviews.map((r) => r.user_id))]
+  const { data: profiles, error: pErr } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', userIds)
+  if (pErr) throw pErr
+
+  const profilesById = Object.fromEntries(profiles.map((p) => [p.id, p]))
+  return reviews.map((r) => ({ ...r, profiles: profilesById[r.user_id] }))
+}
+
+/** Outros artistas curtidos por quem também curte este (nota 4-5 em comum). */
+export async function getSimilarArtists(artistId, limit = 8) {
+  const { data: tracks, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
+  if (error) throw error
+  const trackIds = tracks.map((t) => t.id)
+  if (!trackIds.length) return []
+
+  const { data: likers, error: lErr } = await supabase
+    .from('ratings')
+    .select('user_id')
+    .in('track_id', trackIds)
+    .gte('score', 4)
+  if (lErr) throw lErr
+  const userIds = [...new Set(likers.map((l) => l.user_id))]
+  if (!userIds.length) return []
+
+  const { data: otherRatings, error: oErr } = await supabase
+    .from('ratings')
+    .select('tracks ( artist_id )')
+    .in('user_id', userIds)
+    .gte('score', 4)
+  if (oErr) throw oErr
+
+  const counts = {}
+  otherRatings.forEach((r) => {
+    const aId = r.tracks?.artist_id
+    if (!aId || aId === artistId) return
+    counts[aId] = (counts[aId] || 0) + 1
+  })
+  const topIds = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => id)
+  if (!topIds.length) return []
+
+  const { data: artists, error: aErr } = await supabase
+    .from('artists')
+    .select('id, name, spotify_id, image_url')
+    .in('id', topIds)
+  if (aErr) throw aErr
+  const byId = Object.fromEntries(artists.map((a) => [a.id, a]))
+  return topIds.map((id) => byId[id]).filter(Boolean)
+}
+
 export async function addItemToList(listId, itemType, itemId) {
   const row = { list_id: listId, item_type: itemType }
   if (itemType === 'track') row.track_id = itemId

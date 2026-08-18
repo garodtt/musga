@@ -881,6 +881,100 @@ textarea.input {
   flex-shrink: 0;
 }
 
+/* ---------- Modal genérico ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* ---------- Editor de foto (crop/zoom) ---------- */
+
+.cropper-viewport {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--border-strong);
+  cursor: grab;
+  touch-action: none;
+}
+
+.cropper-viewport:active {
+  cursor: grabbing;
+}
+
+.cropper-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cropper-zoom {
+  width: 100%;
+  margin-top: 18px;
+  accent-color: var(--accent);
+}
+
+/* ---------- Lista de seguidores/seguindo ---------- */
+
+.follow-modal__list {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.link-button:hover {
+  color: var(--text);
+}
+
+/* ---------- Página de artista ---------- */
+
+.artist-stat-row {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  margin-top: 10px;
+}
+
+.artist-stat-row b {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
 /* ---------- Cartão genérico ---------- */
 
 .card {

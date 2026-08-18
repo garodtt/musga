@@ -49,6 +49,8 @@ create table public.artists (
   name text not null,
   image_url text,
   genres text[],
+  followers_count integer,
+  popularity smallint,
   cached_at timestamptz not null default now()
 );
 
@@ -463,3 +465,22 @@ create policy "list_collaborators_delete_owner_or_self" on public.list_collabora
 create policy "wishlist_select_own" on public.wishlist_items for select using (auth.uid() = user_id);
 create policy "wishlist_insert_own" on public.wishlist_items for insert with check (auth.uid() = user_id);
 create policy "wishlist_delete_own" on public.wishlist_items for delete using (auth.uid() = user_id);
+
+-- =========================================================
+-- STORAGE — bucket para fotos de perfil (upload + recorte)
+-- Caminho de cada arquivo: {user_id}/avatar.png
+-- =========================================================
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "avatars_public_read" on storage.objects for select using (bucket_id = 'avatars');
+create policy "avatars_insert_own" on storage.objects for insert with check (
+  bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+);
+create policy "avatars_update_own" on storage.objects for update using (
+  bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+);
+create policy "avatars_delete_own" on storage.objects for delete using (
+  bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+);

@@ -117,6 +117,8 @@ async function upsertArtist(spotifyArtist: any) {
     name: spotifyArtist.name,
     image_url: biggestImage(spotifyArtist.images),
     genres: spotifyArtist.genres ?? [],
+    followers_count: spotifyArtist.followers?.total ?? null,
+    popularity: spotifyArtist.popularity ?? null,
     cached_at: new Date().toISOString(),
   };
   const { data, error } = await supabaseAdmin
@@ -132,13 +134,25 @@ async function handleArtist(spotifyId: string) {
   const artistData = await spotifyFetch(`/artists/${spotifyId}`);
   const artist = await upsertArtist(artistData);
 
-  const albumsData = await spotifyFetch(
-    `/artists/${spotifyId}/albums?include_groups=album,single&limit=10&market=BR`
-  );
+  // O Spotify limita "Get Artist's Albums" a 10 itens por chamada agora,
+  // então paginamos até pegar a discografia inteira (com um teto de
+  // segurança pra não fazer chamadas infinitas num artista gigante).
+  let allAlbums: any[] = [];
+  let offset = 0;
+  const pageSize = 10;
+  while (offset <= 190) {
+    const page = await spotifyFetch(
+      `/artists/${spotifyId}/albums?include_groups=album,single&limit=${pageSize}&offset=${offset}&market=BR`
+    );
+    const items = page.items ?? [];
+    allAlbums = allAlbums.concat(items);
+    if (!page.next || items.length < pageSize) break;
+    offset += pageSize;
+  }
 
   // Remove álbuns duplicados (o Spotify repete o mesmo álbum por mercado)
   const seen = new Set<string>();
-  const uniqueAlbums = (albumsData.items ?? []).filter((al: any) => {
+  const uniqueAlbums = allAlbums.filter((al: any) => {
     const key = al.name.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
