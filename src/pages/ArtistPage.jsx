@@ -53,8 +53,11 @@ export default function ArtistPage() {
           }
         }
 
-        const needsFreshFetch =
-          !cachedArtist || cachedAlbums.length === 0 || cachedArtist.followers_count == null || isCacheStale(cachedArtist.cached_at)
+        // Nota: não força atualização só por faltar seguidores/popularidade —
+        // isso faria TODO artista cacheado antes dessa feature rebuscar no
+        // Spotify a cada visita, estourando o limite de taxa da API. Esses
+        // dados chegam naturalmente na próxima renovação do cache (7 dias).
+        const needsFreshFetch = !cachedArtist || cachedAlbums.length === 0 || isCacheStale(cachedArtist.cached_at)
         if (needsFreshFetch) {
           if (cachedArtist && cachedAlbums.length > 0 && !cancelled) setRefreshing(true)
           const fresh = await fetchArtist(spotifyId)
