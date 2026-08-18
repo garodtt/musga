@@ -9,7 +9,9 @@ export default function WishlistButton({ itemType, itemId }) {
 
   useEffect(() => {
     if (!user) return
-    isInWishlist(user.id, itemType, itemId).then(setSaved)
+    isInWishlist(user.id, itemType, itemId)
+      .then(setSaved)
+      .catch((err) => console.error('Falha ao checar lista de desejos:', err.message))
   }, [user, itemType, itemId])
 
   if (!user) return null
