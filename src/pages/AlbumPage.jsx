@@ -69,18 +69,23 @@ export default function AlbumPage() {
         // 1) Mostra o que já está cacheado no nosso banco — instantâneo,
         // não depende do Spotify estar respondendo rápido.
         const cachedAlbum = await getAlbumFromCache(spotifyId)
+        let cachedTracks = []
         if (cachedAlbum && !cancelled) {
-          const tracks = await getTracksByAlbumId(cachedAlbum.id)
-          const data = { artist: cachedAlbum.artists, album: cachedAlbum, tracks }
-          setAlbumData(data)
-          await reloadAggregates(tracks.map((t) => t.id), cachedAlbum.id)
-          getListenersAlsoLiked(cachedAlbum.id).then(setRelatedAlbums)
+          cachedTracks = await getTracksByAlbumId(cachedAlbum.id)
+          if (cachedTracks.length > 0) {
+            const data = { artist: cachedAlbum.artists, album: cachedAlbum, tracks: cachedTracks }
+            setAlbumData(data)
+            await reloadAggregates(cachedTracks.map((t) => t.id), cachedAlbum.id)
+            getListenersAlsoLiked(cachedAlbum.id).then(setRelatedAlbums)
+          }
         }
 
-        // 2) Se não tinha nada em cache, ou o cache está velho (>7 dias),
-        // busca no Spotify (via edge function) por trás e atualiza a tela.
-        if (!cachedAlbum || isCacheStale(cachedAlbum.cached_at)) {
-          if (cachedAlbum && !cancelled) setRefreshing(true)
+        // 2) Busca no Spotify (via edge function) se: não tinha nada em
+        // cache, o cache está velho (>7 dias), OU o álbum foi cacheado
+        // "pela metade" (visto só na página do artista, sem faixas ainda).
+        const needsFreshFetch = !cachedAlbum || cachedTracks.length === 0 || isCacheStale(cachedAlbum.cached_at)
+        if (needsFreshFetch) {
+          if (cachedAlbum && cachedTracks.length > 0 && !cancelled) setRefreshing(true)
           const fresh = await fetchAlbum(spotifyId)
           if (!cancelled) {
             setAlbumData(fresh)

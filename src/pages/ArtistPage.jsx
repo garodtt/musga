@@ -19,15 +19,20 @@ export default function ArtistPage() {
       // 1) Tenta mostrar o que já está cacheado no nosso banco — instantâneo.
       try {
         const cachedArtist = await getArtistFromCache(spotifyId)
+        let cachedAlbums = []
         if (cachedArtist && !cancelled) {
-          const albums = await getAlbumsByArtistId(cachedArtist.id)
-          if (!cancelled) setData({ artist: cachedArtist, albums })
+          cachedAlbums = await getAlbumsByArtistId(cachedArtist.id)
+          if (cachedAlbums.length > 0) {
+            setData({ artist: cachedArtist, albums: cachedAlbums })
+          }
         }
 
-        // 2) Se não tinha nada em cache, ou o cache está velho (>7 dias),
-        // busca no Spotify (via edge function) e atualiza.
-        if (!cachedArtist || isCacheStale(cachedArtist.cached_at)) {
-          if (cachedArtist && !cancelled) setRefreshing(true)
+        // 2) Busca no Spotify (via edge function) se: não tinha nada em
+        // cache, o cache está velho (>7 dias), OU o artista foi cacheado
+        // sem nenhum álbum (cache incompleto de uma tentativa anterior).
+        const needsFreshFetch = !cachedArtist || cachedAlbums.length === 0 || isCacheStale(cachedArtist.cached_at)
+        if (needsFreshFetch) {
+          if (cachedArtist && cachedAlbums.length > 0 && !cancelled) setRefreshing(true)
           const fresh = await fetchArtist(spotifyId)
           if (!cancelled) setData(fresh)
         }
