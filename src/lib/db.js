@@ -146,13 +146,23 @@ export async function getReviewCountsForTracks(trackIds) {
 // ---------- Reviews ----------
 
 export async function getReviewsForTrack(trackId) {
-  const { data, error } = await supabase
+  const { data: reviews, error } = await supabase
     .from('reviews')
-    .select('id, body, created_at, user_id, profiles ( username, display_name, avatar_url )')
+    .select('id, body, created_at, user_id')
     .eq('track_id', trackId)
     .order('created_at', { ascending: false })
   if (error) throw error
-  return data
+  if (!reviews.length) return []
+
+  const userIds = [...new Set(reviews.map((r) => r.user_id))]
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', userIds)
+  if (profilesError) throw profilesError
+
+  const profilesById = Object.fromEntries(profiles.map((p) => [p.id, p]))
+  return reviews.map((r) => ({ ...r, profiles: profilesById[r.user_id] }))
 }
 
 export async function upsertReview(trackId, userId, body) {
@@ -492,13 +502,23 @@ export async function unlikeReview(reviewId, userId) {
 // ---------- Comentários em reviews ----------
 
 export async function getCommentsForReview(reviewId) {
-  const { data, error } = await supabase
+  const { data: comments, error } = await supabase
     .from('review_comments')
-    .select('id, body, created_at, user_id, profiles ( username, display_name, avatar_url )')
+    .select('id, body, created_at, user_id')
     .eq('review_id', reviewId)
     .order('created_at', { ascending: true })
   if (error) throw error
-  return data
+  if (!comments.length) return []
+
+  const userIds = [...new Set(comments.map((c) => c.user_id))]
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', userIds)
+  if (profilesError) throw profilesError
+
+  const profilesById = Object.fromEntries(profiles.map((p) => [p.id, p]))
+  return comments.map((c) => ({ ...c, profiles: profilesById[c.user_id] }))
 }
 
 export async function addReviewComment(reviewId, userId, body) {

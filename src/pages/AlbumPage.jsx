@@ -128,8 +128,12 @@ export default function AlbumPage() {
     }
     setOpenReviewsFor(trackId)
     if (!reviewsByTrack[trackId]) {
-      const reviews = await getReviewsForTrack(trackId)
-      setReviewsByTrack((prev) => ({ ...prev, [trackId]: reviews }))
+      try {
+        const reviews = await getReviewsForTrack(trackId)
+        setReviewsByTrack((prev) => ({ ...prev, [trackId]: reviews }))
+      } catch (err) {
+        setError(`Não foi possível carregar as reviews: ${err.message}`)
+      }
     }
   }
 
