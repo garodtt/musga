@@ -76,6 +76,18 @@ function biggestImage(images: { url: string }[] | undefined) {
   return images?.[0]?.url ?? null;
 }
 
+// O Spotify retorna release_date com precisão variável: só o ano ("2002"),
+// ano+mês ("2002-05") ou data completa ("2002-05-20"). A coluna do banco
+// é do tipo `date`, que exige o formato completo — então completamos com
+// "-01" quando falta mês e/ou dia.
+function normalizeReleaseDate(releaseDate: string | null | undefined): string | null {
+  if (!releaseDate) return null;
+  if (/^\d{4}$/.test(releaseDate)) return `${releaseDate}-01-01`;
+  if (/^\d{4}-\d{2}$/.test(releaseDate)) return `${releaseDate}-01`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) return releaseDate;
+  return null;
+}
+
 // ---- Handlers ----------------------------------------------------------
 
 async function handleSearch(query: string) {
@@ -137,13 +149,25 @@ async function handleArtist(spotifyId: string) {
   // O Spotify limita "Get Artist's Albums" a 10 itens por chamada agora,
   // então paginamos até pegar a discografia inteira (com um teto de
   // segurança pra não fazer chamadas infinitas num artista gigante).
+  // Se alguma página falhar no meio do caminho, devolve o que já foi
+  // buscado até ali em vez de derrubar a requisição inteira.
   let allAlbums: any[] = [];
   let offset = 0;
   const pageSize = 10;
   while (offset <= 190) {
-    const page = await spotifyFetch(
-      `/artists/${spotifyId}/albums?include_groups=album,single&limit=${pageSize}&offset=${offset}&market=BR`
-    );
+    let page;
+    try {
+      page = await spotifyFetch(
+        `/artists/${spotifyId}/albums?include_groups=album,single&limit=${pageSize}&offset=${offset}&market=BR`
+      );
+    } catch (err) {
+      // Se a primeira página falhar, é um erro de verdade (não uma
+      // discografia vazia) — melhor avisar do que devolver "0 álbuns"
+      // como se fosse um resultado válido.
+      if (offset === 0) throw err;
+      console.error(`Falha ao buscar página de álbuns (offset=${offset}):`, err);
+      break;
+    }
     const items = page.items ?? [];
     allAlbums = allAlbums.concat(items);
     if (!page.next || items.length < pageSize) break;
@@ -164,7 +188,7 @@ async function handleArtist(spotifyId: string) {
     artist_id: artist.id,
     name: al.name,
     cover_url: biggestImage(al.images),
-    release_date: al.release_date || null,
+    release_date: normalizeReleaseDate(al.release_date),
     album_type: al.album_type,
     total_tracks: al.total_tracks,
     cached_at: new Date().toISOString(),
@@ -195,7 +219,7 @@ async function handleAlbum(spotifyId: string) {
     artist_id: artist.id,
     name: albumData.name,
     cover_url: biggestImage(albumData.images),
-    release_date: albumData.release_date || null,
+    release_date: normalizeReleaseDate(albumData.release_date),
     album_type: albumData.album_type,
     total_tracks: albumData.total_tracks,
     cached_at: new Date().toISOString(),

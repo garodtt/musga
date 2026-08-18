@@ -856,14 +856,20 @@ export async function getFollowingListProfiles(userId) {
 
 // ---------- Página do artista ("tudo dele") ----------
 
-/** Nota média e total de avaliações da comunidade para todas as faixas do artista. */
-export async function getArtistCommunityStats(artistId) {
-  const { data: tracks, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
+/** ids das faixas de um artista — compartilhado pelas funções abaixo, pra
+ * não repetir a mesma consulta 3 vezes na mesma visita à página. */
+export async function getArtistTrackIds(artistId) {
+  const { data, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
   if (error) throw error
-  const trackIds = tracks.map((t) => t.id)
-  if (!trackIds.length) return { avgScore: null, totalRatings: 0 }
+  return data.map((t) => t.id)
+}
 
-  const { data: ratings, error: rErr } = await supabase.from('ratings').select('score').in('track_id', trackIds)
+/** Nota média e total de avaliações da comunidade para todas as faixas do artista. */
+export async function getArtistCommunityStats(artistId, trackIds) {
+  const ids = trackIds ?? (await getArtistTrackIds(artistId))
+  if (!ids.length) return { avgScore: null, totalRatings: 0 }
+
+  const { data: ratings, error: rErr } = await supabase.from('ratings').select('score').in('track_id', ids)
   if (rErr) throw rErr
   if (!ratings.length) return { avgScore: null, totalRatings: 0 }
 
@@ -896,16 +902,14 @@ export async function getTopTracksForArtist(artistId, limit = 10) {
 }
 
 /** Reviews recentes escritas sobre qualquer faixa deste artista. */
-export async function getRecentReviewsForArtist(artistId, limit = 6) {
-  const { data: tracks, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
-  if (error) throw error
-  const trackIds = tracks.map((t) => t.id)
-  if (!trackIds.length) return []
+export async function getRecentReviewsForArtist(artistId, limit = 6, trackIds) {
+  const ids = trackIds ?? (await getArtistTrackIds(artistId))
+  if (!ids.length) return []
 
   const { data: reviews, error: rErr } = await supabase
     .from('reviews')
     .select('id, body, created_at, user_id, tracks ( name )')
-    .in('track_id', trackIds)
+    .in('track_id', ids)
     .order('created_at', { ascending: false })
     .limit(limit)
   if (rErr) throw rErr
@@ -923,16 +927,14 @@ export async function getRecentReviewsForArtist(artistId, limit = 6) {
 }
 
 /** Outros artistas curtidos por quem também curte este (nota 4-5 em comum). */
-export async function getSimilarArtists(artistId, limit = 8) {
-  const { data: tracks, error } = await supabase.from('tracks').select('id').eq('artist_id', artistId)
-  if (error) throw error
-  const trackIds = tracks.map((t) => t.id)
-  if (!trackIds.length) return []
+export async function getSimilarArtists(artistId, limit = 8, trackIds) {
+  const ids = trackIds ?? (await getArtistTrackIds(artistId))
+  if (!ids.length) return []
 
   const { data: likers, error: lErr } = await supabase
     .from('ratings')
     .select('user_id')
-    .in('track_id', trackIds)
+    .in('track_id', ids)
     .gte('score', 4)
   if (lErr) throw lErr
   const userIds = [...new Set(likers.map((l) => l.user_id))]

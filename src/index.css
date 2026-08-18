@@ -350,6 +350,15 @@ textarea.input {
   border-radius: 50%;
 }
 
+.tile__cover--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 34px;
+  color: var(--text-faint);
+}
+
 .tile__title {
   margin-top: 8px;
   font-size: 14px;

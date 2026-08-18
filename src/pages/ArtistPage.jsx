@@ -5,6 +5,7 @@ import {
   getArtistFromCache,
   getAlbumsByArtistId,
   isCacheStale,
+  getArtistTrackIds,
   getArtistCommunityStats,
   getTopTracksForArtist,
   getRecentReviewsForArtist,
@@ -70,10 +71,12 @@ export default function ArtistPage() {
     }
 
     function loadCommunityData(artistId) {
-      getArtistCommunityStats(artistId).then((s) => !cancelled && setCommunityStats(s))
+      getArtistTrackIds(artistId).then((trackIds) => {
+        getArtistCommunityStats(artistId, trackIds).then((s) => !cancelled && setCommunityStats(s))
+        getRecentReviewsForArtist(artistId, 6, trackIds).then((r) => !cancelled && setRecentReviews(r))
+        getSimilarArtists(artistId, 8, trackIds).then((a) => !cancelled && setSimilarArtists(a))
+      })
       getTopTracksForArtist(artistId, 8).then((t) => !cancelled && setTopTracks(t))
-      getRecentReviewsForArtist(artistId, 6).then((r) => !cancelled && setRecentReviews(r))
-      getSimilarArtists(artistId, 8).then((a) => !cancelled && setSimilarArtists(a))
     }
 
     load()
