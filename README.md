@@ -1,118 +1,106 @@
-# Musgas
+# 🎵 Musgas
 
-Letterboxd, mas para música. Avalie faixas de 0 a 5, veja a nota do álbum
-(média das notas das faixas), escreva reviews, siga outros usuários e monte
-listas. Catálogo de artistas/álbuns/faixas vem do Spotify e é cacheado no seu
-banco conforme as pessoas navegam.
+Letterboxd, mas para música. Avalie faixas, veja a nota de cada álbum, escreva
+reviews, monte listas, siga outras pessoas e descubra o que a comunidade está
+ouvindo — tudo num catálogo alimentado pelo Spotify.
 
-Stack: **React 18 + Vite** no front-end, **Supabase** (Postgres + Auth + Edge
-Functions) no back-end.
+🔗 **[musgas-list.netlify.app](https://musgas-list.netlify.app/)**
 
 ---
 
-## 1. Criar o projeto no Supabase
+## O que dá pra fazer
 
-1. Crie um projeto em https://supabase.com/dashboard.
-2. No **SQL Editor**, cole e rode o conteúdo inteiro de `supabase/schema.sql`.
-   Isso cria todas as tabelas, views de agregação e as políticas de RLS.
-3. Em **Project Settings → API**, copie a **Project URL** e a **anon public
-   key** — vão para o `.env` do front-end (passo 4).
+**Catálogo e avaliação**
+- Buscar artistas, álbuns e faixas com busca em tempo real (autocomplete)
+- Avaliar qualquer faixa de 1 a 5 — a nota do álbum é a média das faixas avaliadas
+- Distribuição visual das notas de um álbum
+- Avaliar rápido direto no dropdown de busca, sem abrir o álbum
 
-## 2. Criar um app no Spotify (para buscar artistas/álbuns/faixas)
+**Reviews e comunidade**
+- Escrever reviews por faixa, curtir e comentar nas dos outros
+- Notificações automáticas (seguidas, curtidas, comentários)
+- Comparação de gosto musical entre dois perfis
+- Feed de atividade de quem você segue
 
-1. Acesse https://developer.spotify.com/dashboard e crie um app.
-2. Copie o **Client ID** e o **Client Secret**.
-3. Não precisa configurar Redirect URI — usamos o fluxo *Client Credentials*
-   (autenticação app-a-app, sem login do usuário no Spotify).
+**Perfil**
+- Estatísticas pessoais (faixas avaliadas, reviews, artistas diferentes, distribuição das próprias notas)
+- Selos de incentivo (Ouvinte Assíduo, Crítico, Madrugador, Nostálgico...)
+- Resumo de atividade da semana/mês
+- Editar nome, bio e foto — com upload, recorte e zoom direto no navegador
+- Lista de seguidores/seguindo estilo Instagram
 
-## 3. Deploy da Edge Function (proxy do Spotify)
+**Listas**
+- Criar listas com tags, sem duplicar itens
+- Reordenar arrastando, convidar colaboradores
+- Exportar como texto ou imagem (PNG)
 
-O Client Secret do Spotify nunca pode ir para o front-end — por isso existe
-`supabase/functions/spotify-proxy`, que roda no servidor.
+**Descoberta**
+- Home com músicas em alta, recomendações e mais bem avaliados (com filtro por gênero/década)
+- "Quem ouviu isso também ouviu" nos álbuns
+- Página de artista completa: discografia inteira, seguidores/popularidade no Spotify, faixas mais bem avaliadas pela comunidade, reviews recentes e artistas parecidos
+- Buscar e seguir pessoas, lista de desejos ("ouvir depois")
 
-```bash
-npm install -g supabase
-supabase login
-supabase link --project-ref SEU_PROJECT_REF
+**Extra**
+- Tema claro/escuro
+- Login por e-mail, Google ou Spotify
 
-supabase secrets set SPOTIFY_CLIENT_ID=xxxxx SPOTIFY_CLIENT_SECRET=xxxxx
+---
 
-supabase functions deploy spotify-proxy
+## Tecnologias
+
+| Camada | Stack |
+|---|---|
+| Front-end | React 18 + Vite, React Router |
+| Estilo | CSS puro, sistema de design com variáveis (sem framework de UI) |
+| Backend | Supabase — Postgres, Auth, Storage, Edge Functions, Row Level Security |
+| Dados externos | API do Spotify (Client Credentials Flow) |
+| Deploy | Netlify (front-end) + Supabase (banco e funções) |
+
+Sem Redux, sem TypeScript no front, sem CSS-in-JS — só o necessário pra rodar rápido e ser fácil de mexer.
+
+## Como o catálogo funciona
+
+O Spotify não permite mais busca de catálogo totalmente livre. O Musgas contorna
+isso com um **cache inteligente**: a primeira vez que alguém busca um artista ou
+abre um álbum, uma Edge Function do Supabase busca no Spotify e salva no banco.
+Das próximas vezes (de qualquer usuário), os dados vêm direto do banco —
+instantâneo, sem depender da API externa a cada visita.
+
+## Estrutura do projeto
+
+```
+musgas/
+├── supabase/
+│   ├── schema.sql                 → schema completo do banco (tabelas, views, RLS)
+│   ├── migrations/                → histórico de mudanças incrementais
+│   └── functions/spotify-proxy/   → Edge Function que fala com a API do Spotify
+├── src/
+│   ├── lib/                       → clientes (Supabase, Spotify), dados, exportação de listas
+│   ├── context/                   → autenticação
+│   ├── hooks/                     → debounce, tema claro/escuro
+│   ├── components/                → navbar, cards, notas, reviews, listas, perfil, notificações
+│   └── pages/                     → Home, Busca, Artista, Álbum, Perfil, Listas, Pessoas, Login...
+└── public/                        → arquivos estáticos
 ```
 
-`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` já ficam disponíveis
-automaticamente dentro da Edge Function — não precisa configurá-los.
+## Rodando localmente
 
-## 4. Configurar login com Google (opcional, mas recomendado)
-
-Você pediu simplicidade + login social — o Supabase Auth já entrega os dois
-sem custo extra de código: o e-mail/senha funciona pronto, e o Google é
-só configuração no painel (o botão "Continuar com Google" já está no código).
-
-1. No **Google Cloud Console** → *APIs & Services → Credentials*, crie um
-   **OAuth Client ID** do tipo "Web application".
-2. Em *Authorized redirect URIs*, adicione a URL de callback que o Supabase
-   mostra em **Authentication → Providers → Google** (algo como
-   `https://SEU-PROJETO.supabase.co/auth/v1/callback`).
-3. Copie o Client ID/Secret do Google para essa mesma tela do Supabase e
-   habilite o provider.
-
-Se preferir começar só com e-mail/senha, não faça nada aqui — o login social
-some da tela sozinho quando o provider não está habilitado no seu Supabase
-(o botão continua aparecendo, mas ative o provider antes de divulgar o app).
-
-## 5. Configurar o front-end
+Pré-requisitos: Node 18+, uma conta no [Supabase](https://supabase.com) e um app
+criado no [Spotify for Developers](https://developer.spotify.com/dashboard).
 
 ```bash
-cp .env.example .env
-# preencha VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY
-
+git clone <seu-repositório>
+cd musgas
 npm install
+cp .env.example .env   # preencha com a URL e a anon key do seu projeto Supabase
 npm run dev
 ```
 
-Abra http://localhost:5173.
+Pra funcionar de ponta a ponta (login, catálogo, avaliações), também é preciso:
 
-## 6. Subir para o GitHub
-
-```bash
-git init
-git add .
-git commit -m "Primeira versão do Musgas"
-git branch -M main
-git remote add origin https://github.com/SEU-USUARIO/musgas.git
-git push -u origin main
-```
-
-O `.env` está no `.gitignore` — suas chaves não vão para o repositório.
-
----
-
-## Como a nota do álbum é calculada
-
-- Cada faixa tem sua própria nota média (`track_rating_stats`, média de 1 a 5
-  entre todos os usuários que avaliaram aquela faixa).
-- A nota do álbum (`album_rating_stats`) é a **média das médias das faixas**
-  que já têm pelo menos uma avaliação — exatamente como você descreveu: se um
-  álbum tem 5 faixas e você marca todas como 1, a nota do álbum fica 1.
-- A página do álbum também mostra a **distribuição percentual** das notas
-  (quantos % das avaliações do álbum são nota 1, 2, 3, 4 ou 5).
-
-## Estrutura de pastas
-
-```
-supabase/
-  schema.sql                    → todas as tabelas, views e políticas de RLS
-  functions/spotify-proxy/      → edge function que fala com a API do Spotify
-src/
-  lib/                          → clientes Supabase/Spotify e helpers de dados
-  context/AuthContext.jsx       → sessão, login, cadastro, Google OAuth
-  components/                   → navbar, cards, sistema de notas, reviews, listas
-  pages/                        → Home, Busca, Artista, Álbum, Perfil, Listas, Login
-```
-
-## Próximos passos possíveis
-
-- Avatar/bio editáveis na página de perfil.
-- Notificações quando alguém que você segue avalia algo.
-- Paginação/scroll infinito na busca e no feed.
+1. Rodar `supabase/schema.sql` inteiro no SQL Editor do seu projeto Supabase
+2. Criar um app no Spotify for Developers e configurar `SPOTIFY_CLIENT_ID` /
+   `SPOTIFY_CLIENT_SECRET` como secrets da Edge Function
+3. Fazer o deploy da função: `supabase functions deploy spotify-proxy`
+4. (Opcional) Habilitar login social em **Authentication → Providers** no
+   painel do Supabase, se quiser Google/Spotify além de e-mail e senha
