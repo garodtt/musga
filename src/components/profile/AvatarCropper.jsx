@@ -1,12 +1,18 @@
 import { useRef, useState } from 'react'
 
-const VIEWPORT = 260
 const OUTPUT_SIZE = 400
 
 export default function AvatarCropper({ file, onCancel, onConfirm }) {
   const imgRef = useRef(null)
   const objectUrlRef = useRef(URL.createObjectURL(file))
   const dragState = useRef(null)
+
+  // O círculo de recorte se ajusta à largura da tela (com uma margem pro
+  // padding do modal), em vez de ficar fixo em 260px — evita estourar em
+  // telas bem estreitas. Calculado uma vez na abertura do editor.
+  const [viewport] = useState(() =>
+    typeof window !== 'undefined' ? Math.min(260, Math.max(200, window.innerWidth - 100)) : 260
+  )
 
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 })
   const [imgLoaded, setImgLoaded] = useState(false)
@@ -15,15 +21,15 @@ export default function AvatarCropper({ file, onCancel, onConfirm }) {
   const [saving, setSaving] = useState(false)
 
   const baseScale =
-    naturalSize.w && naturalSize.h ? Math.max(VIEWPORT / naturalSize.w, VIEWPORT / naturalSize.h) : 1
+    naturalSize.w && naturalSize.h ? Math.max(viewport / naturalSize.w, viewport / naturalSize.h) : 1
   const displayScale = baseScale * zoom
 
   function clampOffset(next, currentZoom = zoom) {
     const scale = baseScale * currentZoom
     const dispW = naturalSize.w * scale
     const dispH = naturalSize.h * scale
-    const maxX = Math.max(0, (dispW - VIEWPORT) / 2)
-    const maxY = Math.max(0, (dispH - VIEWPORT) / 2)
+    const maxX = Math.max(0, (dispW - viewport) / 2)
+    const maxY = Math.max(0, (dispH - viewport) / 2)
     return {
       x: Math.min(maxX, Math.max(-maxX, next.x)),
       y: Math.min(maxY, Math.max(-maxY, next.y)),
@@ -56,7 +62,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm }) {
 
   function handleConfirm() {
     setSaving(true)
-    const sourceSize = VIEWPORT / displayScale
+    const sourceSize = viewport / displayScale
     let sx = naturalSize.w / 2 - sourceSize / 2 - offset.x / displayScale
     let sy = naturalSize.h / 2 - sourceSize / 2 - offset.y / displayScale
     sx = Math.min(Math.max(sx, 0), naturalSize.w - sourceSize)
@@ -80,8 +86,8 @@ export default function AvatarCropper({ file, onCancel, onConfirm }) {
   // Posição final: centraliza o topo-esquerdo da imagem de forma que o
   // CENTRO da imagem escalada fique no centro do viewport + o offset do
   // arraste. transform-origin fica em 0 0 pra facilitar essa conta.
-  const centerX = VIEWPORT / 2 + offset.x
-  const centerY = VIEWPORT / 2 + offset.y
+  const centerX = viewport / 2 + offset.x
+  const centerY = viewport / 2 + offset.y
   const translateX = centerX - (naturalSize.w * displayScale) / 2
   const translateY = centerY - (naturalSize.h * displayScale) / 2
 
@@ -92,6 +98,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm }) {
 
         <div
           className="cropper-viewport"
+          style={{ width: viewport, height: viewport }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
