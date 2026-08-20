@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   getListById,
   removeItemFromList,
   deleteList,
+  updateList,
   updateListItemPositions,
   getCollaborators,
   addCollaboratorByUsername,
@@ -31,6 +32,7 @@ function itemDisplay(item) {
 
 export default function ListDetailPage() {
   const { listId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const navigate = useNavigate()
   const [list, setList] = useState(null)
@@ -39,6 +41,13 @@ export default function ListDetailPage() {
   const [collabUsername, setCollabUsername] = useState('')
   const [collabError, setCollabError] = useState('')
   const [copyFeedback, setCopyFeedback] = useState('')
+  const [shareFeedback, setShareFeedback] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editTags, setEditTags] = useState('')
+  const [editIsPublic, setEditIsPublic] = useState(true)
+  const [editError, setEditError] = useState('')
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
 
@@ -51,6 +60,16 @@ export default function ListDetailPage() {
   useEffect(() => {
     if (list) getCollaborators(list.id).then(setCollaborators)
   }, [list?.id])
+
+  // Abre o formulário de edição sozinho quando chega pelo menu rápido do
+  // card (/lista/:id?edit=1), sem precisar clicar em "Editar" de novo.
+  useEffect(() => {
+    if (list && searchParams.get('edit') === '1' && user?.id === list.user_id) {
+      openEditForm()
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list])
 
   const isOwner = user?.id === list?.user_id
   const isCollaborator = collaborators.some((c) => c.user_id === user?.id)
@@ -109,10 +128,62 @@ export default function ListDetailPage() {
     updateListItemPositions(withPositions.map((i) => ({ id: i.id, position: i.position })))
   }
 
+  /** Move um item pra cima/baixo por botão — o "arrastar" nativo do HTML
+   * não funciona em telas de toque, então isso garante reordenar em
+   * qualquer aparelho (celular incluso). */
+  function moveItem(index, direction) {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= sortedItems.length) return
+    const items = [...sortedItems]
+    const [moved] = items.splice(index, 1)
+    items.splice(newIndex, 0, moved)
+    const withPositions = items.map((item, idx) => ({ ...item, position: idx }))
+    setList((prev) => ({ ...prev, list_items: withPositions }))
+    updateListItemPositions(withPositions.map((i) => ({ id: i.id, position: i.position })))
+  }
+
   function handleCopyText() {
     navigator.clipboard.writeText(buildListText(list))
     setCopyFeedback('Copiado!')
     setTimeout(() => setCopyFeedback(''), 1500)
+  }
+
+  function handleShareLink() {
+    const url = `${window.location.origin}/lista/${list.id}`
+    navigator.clipboard.writeText(url)
+    setShareFeedback('Link copiado!')
+    setTimeout(() => setShareFeedback(''), 1500)
+  }
+
+  function openEditForm() {
+    setEditTitle(list.title)
+    setEditDescription(list.description || '')
+    setEditTags((list.tags || []).join(', '))
+    setEditIsPublic(list.is_public)
+    setEditError('')
+    setEditing(true)
+  }
+
+  async function handleSaveEdit(e) {
+    e.preventDefault()
+    if (!editTitle.trim()) return
+    const tags = editTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    const updates = {
+      title: editTitle.trim(),
+      description: editDescription.trim() || null,
+      tags,
+      is_public: editIsPublic,
+    }
+    try {
+      await updateList(list.id, updates)
+      setList((prev) => ({ ...prev, ...updates }))
+      setEditing(false)
+    } catch (err) {
+      setEditError(err.message)
+    }
   }
 
   if (notFound) {
@@ -135,37 +206,77 @@ export default function ListDetailPage() {
 
   return (
     <div className="page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 style={{ fontSize: 26 }}>{list.title}</h1>
-          <p style={{ color: 'var(--text-faint)', fontSize: 13.5, marginTop: 4 }}>
-            por <Link to={`/perfil/${list.profiles?.username}`}>{list.profiles?.display_name || list.profiles?.username}</Link>
-            {!list.is_public && ' · privada'}
-          </p>
-          {list.description && <p style={{ color: 'var(--text-dim)', marginTop: 10 }}>{list.description}</p>}
-          {list.tags?.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
-              {list.tags.map((t) => (
-                <span key={t} className="tag-chip">
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
+      {editing ? (
+        <form onSubmit={handleSaveEdit} className="card" style={{ marginBottom: 16 }}>
+          <div className="field">
+            <label>Título</label>
+            <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label>Descrição (opcional)</label>
+            <textarea className="input" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Tags (separadas por vírgula, opcional)</label>
+            <input className="input" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, marginBottom: 14 }}>
+            <input type="checkbox" checked={editIsPublic} onChange={(e) => setEditIsPublic(e.target.checked)} />
+            Lista pública
+          </label>
+          {editError && <p className="error-text">{editError}</p>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" className="btn btn--primary">
+              Salvar alterações
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={() => setEditing(false)}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ fontSize: 26 }}>{list.title}</h1>
+            <p style={{ color: 'var(--text-faint)', fontSize: 13.5, marginTop: 4 }}>
+              por <Link to={`/perfil/${list.profiles?.username}`}>{list.profiles?.display_name || list.profiles?.username}</Link>
+              {!list.is_public && ' · privada'}
+            </p>
+            {list.description && <p style={{ color: 'var(--text-dim)', marginTop: 10 }}>{list.description}</p>}
+            {list.tags?.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
+                {list.tags.map((t) => (
+                  <span key={t} className="tag-chip">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {isOwner && (
+              <button className="btn" onClick={openEditForm}>
+                Editar
+              </button>
+            )}
+            {isOwner && (
+              <button className="btn btn--danger" onClick={handleDeleteList}>
+                Excluir lista
+              </button>
+            )}
+            {!isOwner && isCollaborator && (
+              <button className="btn btn--ghost" onClick={handleLeaveList}>
+                Sair da lista
+              </button>
+            )}
+          </div>
         </div>
-        {isOwner && (
-          <button className="btn btn--danger" onClick={handleDeleteList}>
-            Excluir lista
-          </button>
-        )}
-        {!isOwner && isCollaborator && (
-          <button className="btn btn--ghost" onClick={handleLeaveList}>
-            Sair da lista
-          </button>
-        )}
-      </div>
+      )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+        <button className="btn btn--sm" onClick={handleShareLink}>
+          {shareFeedback || 'Compartilhar link'}
+        </button>
         <button className="btn btn--sm" onClick={handleCopyText}>
           {copyFeedback || 'Copiar como texto'}
         </button>
@@ -178,7 +289,7 @@ export default function ListDetailPage() {
         {sortedItems.length === 0 && (
           <p style={{ color: 'var(--text-faint)', fontSize: 14 }}>Essa lista ainda não tem itens.</p>
         )}
-        {sortedItems.map((item) => {
+        {sortedItems.map((item, index) => {
           const { title, subtitle, cover } = itemDisplay(item)
           return (
             <div
@@ -193,17 +304,39 @@ export default function ListDetailPage() {
               onDrop={() => handleDrop(item.id)}
             >
               {canEdit && <span className="drag-handle">⠿</span>}
-              <Link to={itemHref(item)} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+              <Link to={itemHref(item)} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
                 <img
                   src={cover || undefined}
                   alt=""
                   className={`item-row__cover ${item.item_type === 'artist' ? 'item-row__cover--round' : ''}`}
                 />
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div className="item-row__title">{title}</div>
                   <div className="item-row__subtitle">{subtitle}</div>
                 </div>
               </Link>
+              {canEdit && (
+                <div className="reorder-buttons">
+                  <button
+                    type="button"
+                    className="reorder-buttons__btn"
+                    onClick={() => moveItem(index, -1)}
+                    disabled={index === 0}
+                    aria-label="Mover pra cima"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    className="reorder-buttons__btn"
+                    onClick={() => moveItem(index, 1)}
+                    disabled={index === sortedItems.length - 1}
+                    aria-label="Mover pra baixo"
+                  >
+                    ▼
+                  </button>
+                </div>
+              )}
               {canEdit && (
                 <button className="btn btn--ghost btn--sm" onClick={() => handleRemoveItem(item.id)}>
                   Remover

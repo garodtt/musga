@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useDebounce } from '../../hooks/useDebounce'
-import { useTheme } from '../../hooks/useTheme'
 import { searchMusic, fetchAlbum } from '../../lib/spotify'
 import { rateTrack } from '../../lib/db'
 import NotificationsBell from '../notifications/NotificationsBell'
@@ -10,7 +9,6 @@ import SignalRating from '../rating/SignalRating'
 
 export default function Navbar() {
   const { user, profile, signOut } = useAuth()
-  const [theme, setTheme] = useTheme()
   const [query, setQuery] = useState('')
   const [liveResults, setLiveResults] = useState(null)
   const [loadingLive, setLoadingLive] = useState(false)
@@ -216,14 +214,6 @@ export default function Navbar() {
             {user && <NavLink to="/pessoas">Pessoas</NavLink>}
             {user && <NavLink to="/listas">Minhas listas</NavLink>}
             {user && <NavLink to="/desejos">Ouvir depois</NavLink>}
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            >
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
             {user ? (
               <>
                 <NotificationsBell />
@@ -281,13 +271,6 @@ export default function Navbar() {
                 Pessoas
               </Link>
             )}
-            <button
-              type="button"
-              className="mobile-menu-panel__item"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            >
-              {theme === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro'}
-            </button>
             {user ? (
               <button type="button" className="mobile-menu-panel__item mobile-menu-panel__item--danger" onClick={signOut}>
                 Sair

@@ -768,6 +768,11 @@ export async function updateListTags(listId, tags) {
   if (error) throw error
 }
 
+export async function updateList(listId, updates) {
+  const { error } = await supabase.from('lists').update(updates).eq('id', listId)
+  if (error) throw error
+}
+
 export async function deleteList(listId) {
   const { error } = await supabase.from('lists').delete().eq('id', listId)
   if (error) throw error

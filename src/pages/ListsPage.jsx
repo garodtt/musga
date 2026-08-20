@@ -102,7 +102,11 @@ export default function ListsPage() {
 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
         {filteredLists.map((l) => (
-          <ListCard list={l} key={l.id} />
+          <ListCard
+            list={l}
+            key={l.id}
+            onDeleted={(deletedId) => setLists((prev) => prev.filter((x) => x.id !== deletedId))}
+          />
         ))}
       </div>
     </div>

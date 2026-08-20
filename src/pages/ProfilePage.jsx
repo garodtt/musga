@@ -17,12 +17,14 @@ import {
   getFollowingListProfiles,
 } from '../lib/db'
 import { computeBadges } from '../lib/badges'
+import { useTheme } from '../hooks/useTheme'
 import RatingDistribution from '../components/rating/RatingDistribution'
 import FollowListModal from '../components/profile/FollowListModal'
 
 export default function ProfilePage() {
   const { username } = useParams()
   const { user } = useAuth()
+  const [theme, setTheme] = useTheme()
 
   const [profile, setProfile] = useState(null)
   const [counts, setCounts] = useState({ followers: 0, following: 0 })
@@ -121,7 +123,7 @@ export default function ProfilePage() {
     <div className="page">
       <div className="profile-header">
         <img src={profile.avatar_url || undefined} alt="" className="profile-header__avatar" />
-        <div>
+        <div className="profile-header__info">
           <h1>{profile.display_name || profile.username}</h1>
           <p style={{ color: 'var(--text-faint)', fontSize: 13.5 }}>@{profile.username}</p>
           {profile.bio && <p style={{ color: 'var(--text-dim)', marginTop: 6 }}>{profile.bio}</p>}
@@ -136,14 +138,25 @@ export default function ProfilePage() {
         </div>
 
         {isOwnProfile && (
-          <Link to="/perfil/editar" className="btn" style={{ marginLeft: 'auto' }}>
-            Editar perfil
-          </Link>
+          <div className="profile-header__actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            >
+              {theme === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro'}
+            </button>
+            <Link to="/perfil/editar" className="btn">
+              Editar perfil
+            </Link>
+          </div>
         )}
         {!isOwnProfile && user && (
-          <button className={`btn ${following ? '' : 'btn--primary'}`} onClick={toggleFollow} style={{ marginLeft: 'auto' }}>
-            {following ? 'Deixar de seguir' : 'Seguir'}
-          </button>
+          <div className="profile-header__actions">
+            <button className={`btn ${following ? '' : 'btn--primary'}`} onClick={toggleFollow}>
+              {following ? 'Deixar de seguir' : 'Seguir'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -228,7 +241,7 @@ export default function ProfilePage() {
           )}
 
           {(topArtistsAlbums.topArtists.length > 0 || topArtistsAlbums.topAlbums.length > 0) && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 36 }}>
+            <div className="top-artists-albums-grid" style={{ marginBottom: 36 }}>
               {topArtistsAlbums.topArtists.length > 0 && (
                 <div className="card">
                   <p className="section-title">Top artistas</p>
