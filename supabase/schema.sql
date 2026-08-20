@@ -401,13 +401,43 @@ create policy "follows_select_all" on public.follows for select using (true);
 create policy "follows_insert_own" on public.follows for insert with check (auth.uid() = follower_id);
 create policy "follows_delete_own" on public.follows for delete using (auth.uid() = follower_id);
 
+-- Funções auxiliares (SECURITY DEFINER) pra checar dono/colaborador de uma
+-- lista sem re-disparar a RLS da outra tabela — evita "infinite recursion
+-- detected in policy" entre lists <-> list_collaborators.
+create or replace function public.is_list_collaborator(target_list_id uuid, target_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.list_collaborators
+    where list_id = target_list_id and user_id = target_user_id
+  );
+$$;
+
+create or replace function public.can_edit_list(target_list_id uuid, target_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.lists
+    where id = target_list_id
+    and (user_id = target_user_id or public.is_list_collaborator(target_list_id, target_user_id))
+  );
+$$;
+
 -- lists (dono ou colaborador podem ver listas privadas; só o dono edita
 -- título/descrição/visibilidade)
 create policy "lists_select_visible" on public.lists
   for select using (
     is_public = true
     or auth.uid() = user_id
-    or exists (select 1 from public.list_collaborators lc where lc.list_id = lists.id and lc.user_id = auth.uid())
+    or public.is_list_collaborator(id, auth.uid())
   );
 create policy "lists_insert_own" on public.lists for insert with check (auth.uid() = user_id);
 create policy "lists_update_own" on public.lists for update using (auth.uid() = user_id);
@@ -415,36 +445,17 @@ create policy "lists_delete_own" on public.lists for delete using (auth.uid() = 
 
 -- list items (dono OU colaborador podem inserir/remover/reordenar itens)
 create policy "list_items_select_visible" on public.list_items for select using (
-  exists (
-    select 1 from public.lists l
-    where l.id = list_items.list_id
-    and (
-      l.is_public = true
-      or l.user_id = auth.uid()
-      or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid())
-    )
-  )
+  exists (select 1 from public.lists l where l.id = list_items.list_id and l.is_public = true)
+  or public.can_edit_list(list_items.list_id, auth.uid())
 );
 create policy "list_items_insert_own_or_collab" on public.list_items for insert with check (
-  exists (
-    select 1 from public.lists l
-    where l.id = list_id
-    and (l.user_id = auth.uid() or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid()))
-  )
+  public.can_edit_list(list_id, auth.uid())
 );
 create policy "list_items_update_own_or_collab" on public.list_items for update using (
-  exists (
-    select 1 from public.lists l
-    where l.id = list_id
-    and (l.user_id = auth.uid() or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid()))
-  )
+  public.can_edit_list(list_id, auth.uid())
 );
 create policy "list_items_delete_own_or_collab" on public.list_items for delete using (
-  exists (
-    select 1 from public.lists l
-    where l.id = list_id
-    and (l.user_id = auth.uid() or exists (select 1 from public.list_collaborators lc where lc.list_id = l.id and lc.user_id = auth.uid()))
-  )
+  public.can_edit_list(list_id, auth.uid())
 );
 
 -- list_collaborators: dono da lista gerencia; um colaborador pode sair
