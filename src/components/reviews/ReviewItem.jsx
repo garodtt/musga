@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Heart, MessageCircle, ChevronUp } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { getReviewLikesInfo, likeReview, unlikeReview, getCommentsForReview, addReviewComment } from '../../lib/db'
 
@@ -65,10 +66,12 @@ export default function ReviewItem({ review }) {
             onClick={toggleLike}
             disabled={!user}
           >
-            ♥ {likeInfo.count > 0 ? likeInfo.count : ''}
+            <Heart size={14} fill={likeInfo.likedByMe ? 'currentColor' : 'none'} />
+            {likeInfo.count > 0 ? likeInfo.count : ''}
           </button>
           <button type="button" className="review__action" onClick={toggleComments}>
-            💬 {comments?.length > 0 ? comments.length : ''} {commentsOpen ? 'ocultar' : 'comentários'}
+            {commentsOpen ? <ChevronUp size={14} /> : <MessageCircle size={14} />}
+            {comments?.length > 0 ? comments.length : ''} {commentsOpen ? 'ocultar' : 'comentários'}
           </button>
         </div>
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Bell } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { getNotifications, getUnreadNotificationCount, markNotificationsRead } from '../../lib/db'
 
@@ -65,7 +66,7 @@ export default function NotificationsBell() {
   return (
     <div style={{ position: 'relative' }} ref={wrapperRef}>
       <button type="button" className="notif-bell" onClick={handleToggle} title="Notificações">
-        🔔
+        <Bell size={19} />
         {unread > 0 && <span className="notif-bell__badge">{unread > 9 ? '9+' : unread}</span>}
       </button>
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Home, Search, Users, User, LogIn, Menu, X, Check } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useDebounce } from '../../hooks/useDebounce'
 import { searchMusic, fetchAlbum } from '../../lib/spotify'
@@ -155,8 +156,8 @@ export default function Navbar() {
             {user && (
               <div className="quick-rate" onClick={(e) => e.stopPropagation()}>
                 {quickRateStatus[t.spotify_id] === 'done' ? (
-                  <span className="mono" style={{ color: 'var(--accent-strong)', fontSize: 12 }}>
-                    avaliado ✓
+                  <span className="mono" style={{ color: 'var(--accent-strong)', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Check size={13} /> avaliado
                   </span>
                 ) : (
                   <SignalRating value={0} onRate={(score) => handleQuickRate(t, score)} size="sm" />
@@ -243,7 +244,7 @@ export default function Navbar() {
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Mais opções"
             >
-              ☰
+              <Menu size={22} />
             </button>
           </div>
         </div>
@@ -254,7 +255,7 @@ export default function Navbar() {
         <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}>
           <div className="mobile-menu-panel" onClick={(e) => e.stopPropagation()}>
             <button className="mobile-menu-panel__close" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar">
-              ✕
+              <X size={18} />
             </button>
             {user && (
               <Link to="/listas" className="mobile-menu-panel__item" onClick={() => setMobileMenuOpen(false)}>
@@ -320,7 +321,7 @@ export default function Navbar() {
       {/* ---------- Barra inferior fixa (mobile) ---------- */}
       <nav className="mobile-bottom-nav">
         <NavLink to="/" end className="mobile-bottom-nav__item">
-          <span className="mobile-bottom-nav__icon">🏠</span>
+          <Home size={20} className="mobile-bottom-nav__icon" />
           <span>Início</span>
         </NavLink>
         <button
@@ -328,23 +329,23 @@ export default function Navbar() {
           className="mobile-bottom-nav__item"
           onClick={() => setMobileSearchOpen(true)}
         >
-          <span className="mobile-bottom-nav__icon">🔍</span>
+          <Search size={20} className="mobile-bottom-nav__icon" />
           <span>Buscar</span>
         </button>
         {user ? (
           <NavLink to="/pessoas" className="mobile-bottom-nav__item">
-            <span className="mobile-bottom-nav__icon">👥</span>
+            <Users size={20} className="mobile-bottom-nav__icon" />
             <span>Pessoas</span>
           </NavLink>
         ) : (
           <NavLink to="/login" className="mobile-bottom-nav__item">
-            <span className="mobile-bottom-nav__icon">🔑</span>
+            <LogIn size={20} className="mobile-bottom-nav__icon" />
             <span>Entrar</span>
           </NavLink>
         )}
         {user && (
           <NavLink to={`/perfil/${profile?.username ?? ''}`} className="mobile-bottom-nav__item">
-            <span className="mobile-bottom-nav__icon">👤</span>
+            <User size={20} className="mobile-bottom-nav__icon" />
             <span>Perfil</span>
           </NavLink>
         )}

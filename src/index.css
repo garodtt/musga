@@ -377,8 +377,7 @@ h1, h2, h3, h4 {
 }
 
 .mobile-bottom-nav__icon {
-  font-size: 20px;
-  line-height: 1;
+  flex-shrink: 0;
 }
 
 .search-dropdown {
@@ -464,6 +463,17 @@ h1, h2, h3, h4 {
 
 .btn--danger {
   color: var(--danger);
+}
+
+.btn--danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #2a0a0a;
+  font-weight: 600;
+}
+
+.btn--danger-solid:hover {
+  filter: brightness(1.08);
 }
 
 .btn--sm {
@@ -948,6 +958,9 @@ textarea.input {
   font-size: 13px;
   color: var(--text-faint);
   padding: 2px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .review__action:hover {

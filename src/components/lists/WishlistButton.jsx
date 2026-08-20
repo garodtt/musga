@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Heart } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { isInWishlist, addToWishlist, removeFromWishlist } from '../../lib/db'
 
@@ -38,8 +39,10 @@ export default function WishlistButton({ itemType, itemId }) {
       onClick={toggle}
       disabled={busy}
       title={saved ? 'Remover de ouvir depois' : 'Salvar para ouvir depois'}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
     >
-      {saved ? '♥ Salvo' : '♡ Ouvir depois'}
+      <Heart size={15} fill={saved ? 'currentColor' : 'none'} />
+      {saved ? 'Salvo' : 'Ouvir depois'}
     </button>
   )
 }

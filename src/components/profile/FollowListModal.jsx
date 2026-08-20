@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { X } from 'lucide-react'
 
 export default function FollowListModal({ title, profiles, loading, onClose }) {
   return (
@@ -6,8 +7,8 @@ export default function FollowListModal({ title, profiles, loading, onClose }) {
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h3>{title}</h3>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>
-            ✕
+          <button className="btn btn--ghost btn--sm" onClick={onClose} aria-label="Fechar">
+            <X size={16} />
           </button>
         </div>
 

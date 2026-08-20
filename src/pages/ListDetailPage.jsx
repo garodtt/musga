@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   getListById,
@@ -12,6 +13,7 @@ import {
   removeCollaborator,
 } from '../lib/db'
 import { buildListText, downloadListAsImage } from '../lib/exportList'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 
 function itemHref(item) {
   if (item.item_type === 'track' && item.tracks?.albums) return `/album/${item.tracks.albums.spotify_id || ''}`
@@ -50,6 +52,7 @@ export default function ListDetailPage() {
   const [editError, setEditError] = useState('')
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => {
     getListById(listId)
@@ -82,7 +85,6 @@ export default function ListDetailPage() {
   }
 
   async function handleDeleteList() {
-    if (!confirm('Excluir esta lista? Essa ação não pode ser desfeita.')) return
     await deleteList(list.id)
     navigate('/listas')
   }
@@ -260,7 +262,7 @@ export default function ListDetailPage() {
               </button>
             )}
             {isOwner && (
-              <button className="btn btn--danger" onClick={handleDeleteList}>
+              <button className="btn btn--danger" onClick={() => setConfirmingDelete(true)}>
                 Excluir lista
               </button>
             )}
@@ -303,7 +305,7 @@ export default function ListDetailPage() {
               }}
               onDrop={() => handleDrop(item.id)}
             >
-              {canEdit && <span className="drag-handle">⠿</span>}
+              {canEdit && <GripVertical size={16} className="drag-handle" />}
               <Link to={itemHref(item)} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
                 <img
                   src={cover || undefined}
@@ -324,7 +326,7 @@ export default function ListDetailPage() {
                     disabled={index === 0}
                     aria-label="Mover pra cima"
                   >
-                    ▲
+                    <ChevronUp size={14} />
                   </button>
                   <button
                     type="button"
@@ -333,7 +335,7 @@ export default function ListDetailPage() {
                     disabled={index === sortedItems.length - 1}
                     aria-label="Mover pra baixo"
                   >
-                    ▼
+                    <ChevronDown size={14} />
                   </button>
                 </div>
               )}
@@ -377,6 +379,20 @@ export default function ListDetailPage() {
           </form>
           {collabError && <p className="error-text">{collabError}</p>}
         </div>
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Excluir lista?"
+          message="Essa ação não pode ser desfeita."
+          confirmLabel="Excluir"
+          danger
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false)
+            handleDeleteList()
+          }}
+        />
       )}
     </div>
   )

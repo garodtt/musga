@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { Sun, Moon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   getProfileByUsername,
@@ -143,8 +144,10 @@ export default function ProfilePage() {
               type="button"
               className="btn"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
-              {theme === 'dark' ? '☀️ Tema claro' : '🌙 Tema escuro'}
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+              {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
             </button>
             <Link to="/perfil/editar" className="btn">
               Editar perfil

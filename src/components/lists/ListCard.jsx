@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { MoreVertical } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { deleteList } from '../../lib/db'
+import ConfirmDialog from '../ui/ConfirmDialog'
 
 export default function ListCard({ list, onDeleted }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [shareFeedback, setShareFeedback] = useState('')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const menuRef = useRef(null)
 
   const isOwner = user?.id === list.user_id
@@ -39,12 +42,16 @@ export default function ListCard({ list, onDeleted }) {
     navigate(`/lista/${list.id}?edit=1`)
   }
 
-  async function handleDelete(e) {
+  function handleDeleteClick(e) {
     e.preventDefault()
     e.stopPropagation()
-    if (!confirm('Excluir esta lista? Essa ação não pode ser desfeita.')) return
-    await deleteList(list.id)
     setMenuOpen(false)
+    setConfirmingDelete(true)
+  }
+
+  async function handleConfirmDelete() {
+    setConfirmingDelete(false)
+    await deleteList(list.id)
     onDeleted?.(list.id)
   }
 
@@ -61,7 +68,7 @@ export default function ListCard({ list, onDeleted }) {
           }}
           aria-label="Mais opções"
         >
-          ⋮
+          <MoreVertical size={16} />
         </button>
 
         {menuOpen && (
@@ -78,7 +85,7 @@ export default function ListCard({ list, onDeleted }) {
               <button
                 type="button"
                 className="list-card__menu-item list-card__menu-item--danger"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
               >
                 Excluir
               </button>
@@ -105,6 +112,17 @@ export default function ListCard({ list, onDeleted }) {
           {count} item(ns) {!list.is_public && '· privada'}
         </p>
       </Link>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Excluir lista?"
+          message="Essa ação não pode ser desfeita."
+          confirmLabel="Excluir"
+          danger
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </div>
   )
 }
